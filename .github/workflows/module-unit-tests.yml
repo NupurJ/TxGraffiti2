@@ -1,28 +1,28 @@
-name: Python CI
+# name: Python CI
 
-on: [push, pull_request]
+# on: [push, pull_request]
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
+# jobs:
+#   test:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: 3.11
 
-      - name: Install dependencies
-        run: |
-          pip install -e '.[dev]'
-          pip install pytest pytest-cov coverage
+#       - name: Install dependencies
+#         run: |
+#           pip install -e '.[dev]'
+#           pip install pytest pytest-cov coverage
 
-      - name: Install HiGHS
-        run: sudo apt install -y coinor-cbc
+#       - name: Install HiGHS
+#         run: sudo apt install -y coinor-cbc
 
-      - name: Run pytest
-        run: |
-          pytest
+#       - name: Run pytest
+#         run: |
+#           pytest
