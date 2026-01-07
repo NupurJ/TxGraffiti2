@@ -25,4 +25,11 @@
 
 #       - name: Run pytest
 #         run: |
-#           pytest
+#           pytest --cov=txgraffiti --cov-report=xml --cov-report=term
+
+#       - name: Upload coverage report to Codecov
+#         uses: codecov/codecov-action@v4
+#         with:
+#           files: coverage.xml
+#           flags: unittests
+#           name: codecov-coverage
