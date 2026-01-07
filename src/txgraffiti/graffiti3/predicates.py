@@ -369,21 +369,6 @@ def LT0(col_or_expr) -> Predicate: return LT(col_or_expr, 0)
 # Set membership / ranges
 # =====================================================================
 
-# @dataclass
-# class InSet(Predicate):
-#     col: Union[Expr, str]
-#     values: Iterable[Any]
-#     name: str = "InSet"
-
-#     def mask(self, df: pd.DataFrame) -> pd.Series:
-#         s = to_expr(self.col).eval(df)
-#         out = pd.Series(s, index=df.index).isin(set(self.values))
-#         return _as_bool_series(out, df.index)
-
-#     def __repr__(self) -> str:
-#         col_txt = to_expr(self.col).__repr__()  # use Expr pretty (__repr__)
-#         return f"[{col_txt} ∈ {{{_fmt_values(self.values)}}}]"
-
 @dataclass(eq=False)
 class InSet(Predicate):
     col: Union[Expr, str]
@@ -407,32 +392,6 @@ class InSet(Predicate):
         s = to_expr(self.col).eval(df)
         out = pd.Series(s, index=df.index).isin(list(self.values))
         return _as_bool_series(out, df.index)
-
-# @dataclass
-# class Between(Predicate):
-#     x: Union[Expr, str, float, int]
-#     low: Union[Expr, str, float, int]
-#     high: Union[Expr, str, float, int]
-#     inclusive_low: bool = True
-#     inclusive_high: bool = True
-#     name: str = "Between"
-
-#     def mask(self, df: pd.DataFrame) -> pd.Series:
-#         xv = pd.to_numeric(to_expr(self.x).eval(df), errors="coerce")
-#         lv = pd.to_numeric(to_expr(self.low).eval(df), errors="coerce")
-#         hv = pd.to_numeric(to_expr(self.high).eval(df), errors="coerce")
-#         left_ok  = (xv >= lv) if self.inclusive_low  else (xv >  lv)
-#         right_ok = (xv <= hv) if self.inclusive_high else (xv <  hv)
-#         return _as_bool_series(left_ok & right_ok, df.index)
-
-#     def __repr__(self) -> str:
-#         x_txt = to_expr(self.x).__repr__()
-#         lo_txt = to_expr(self.low).__repr__()
-#         hi_txt = to_expr(self.high).__repr__()
-#         # choose symbols per bound
-#         lo_sym = "≤" if self.inclusive_low  else "<"
-#         hi_sym = "≤" if self.inclusive_high else "<"
-#         return f"[{lo_txt} {lo_sym} {x_txt} {hi_sym} {hi_txt}]"
 
 @dataclass(eq=False)
 class Between(Predicate):
@@ -525,7 +484,6 @@ class IsFinite(Predicate):
     def cache_key(self) -> tuple:
         return ("IS_FINITE", _operand_key_for_pred(self.x))
 
-
 # =====================================================================
 # Quantifier-style pretty predicates (semantic sugar)
 # =====================================================================
@@ -558,7 +516,6 @@ class ExistsDivergent(Predicate):
     def __repr__(self) -> str:
         sym = f" {self.symbol}" if self.symbol else ""
         return f"(∃{sym} : {self.expr!r} → ∞)"
-
 
 # =====================================================================
 # Functional predicates

@@ -9,12 +9,13 @@ def _load_csv(name: str) -> pd.DataFrame:
 # Expose CSVs at import time
 graph_data = _load_csv("graph_data.csv")
 integer_data = _load_csv("integer_data.csv")
+integer_data.drop(columns=['Unnamed: 0'], inplace=True)
 nba_game_data = _load_csv("nba_game_data.csv")
 calabi_yau_data = _load_csv("calabi_yau_data.csv")
 polytope_data = _load_csv("polytope_data.csv")
 polytope_data.drop(columns=['Unnamed: 0'], inplace=True)
-# qubits_data = _load_csv("qbits-2.csv")
-
+qubits_data = _load_csv("Nqubits_data.csv")
+qubits_data.drop(columns=['Unnamed: 0'], inplace=True)
 
 # ---- Example graphs loader (zip-safe) ----
 import networkx as nx
