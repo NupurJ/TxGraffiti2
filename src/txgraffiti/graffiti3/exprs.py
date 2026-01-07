@@ -59,23 +59,6 @@ _PRECEDENCE = {
     "+": 1, "-": 1,
 }
 
-
-# def safe_sqrt_array(a: np.ndarray) -> np.ndarray:
-#     """
-#     sqrt but never emits runtime warnings.
-#     Returns NaN where input is negative or non-finite.
-#     """
-#     a = np.asarray(a, dtype=float)
-#     out = np.full_like(a, np.nan, dtype=float)
-#     m = np.isfinite(a) & (a >= 0.0)
-#     if np.any(m):
-#         out[m] = np.sqrt(a[m])
-#     return out
-
-
-
-# SeriesLike = Union[pd.Series, np.ndarray, float, int]
-
 def safe_sqrt_series(x: SeriesLike) -> pd.Series:
     """
     sqrt, but never emits runtime warnings.
@@ -163,30 +146,6 @@ class Expr:
         # By design, __repr__ returns pretty() so everything downstream benefits.
         return self.pretty()
 
-
-# ---------------------------------------------------------------------
-# Concrete expressions
-# ---------------------------------------------------------------------
-# class Const(Expr):
-#     def __init__(self, value: float | int | Fraction):
-#         self.value = value
-
-#     def eval(self, df: pd.DataFrame) -> pd.Series:
-#         return pd.Series(float(self.value), index=df.index, dtype=float)
-
-#     def pretty(self) -> str:
-#         v = self.value
-#         if isinstance(v, Fraction):
-#             if v == 1: return "1"
-#             if v == -1: return "-1"
-#             if v == 0: return "0"
-#             n, d = v.numerator, v.denominator
-#             if d == 1: return f"{n}"
-#             if d == -1: return f"-{n}"
-#             return f"({n}/{d})"
-#         f = float(v)
-#         return str(int(f)) if f.is_integer() else f"{f}"
-
 class Const(Expr):
     def __init__(self, value: float | int | Fraction):
         # Keep whatever we're given; we'll normalize only at pretty-time.
@@ -235,32 +194,6 @@ class Const(Expr):
         if d == -1:
             return f"-{n}"
         return f"({n}/{d})"
-
-
-# class ColumnTerm(Expr):
-#     def __init__(self, col: str):
-#         self.col = col
-
-#     # def eval(self, df: pd.DataFrame) -> pd.Series:
-#     #     if self.col not in df.columns:
-#     #         raise KeyError(f"Required column '{self.col}' not found in DataFrame.")
-#     #     s = df[self.col]
-#     #     if is_bool_dtype(s):
-#     #         return s.astype(float, copy=False).reindex(df.index)
-#     #     return pd.to_numeric(s, errors="coerce").reindex(df.index)
-#     def eval(self, df: pd.DataFrame) -> pd.Series:
-#         if self.col not in df.columns:
-#             raise KeyError(f"Required column '{self.col}' not found in DataFrame.")
-#         s = df[self.col].reindex(df.index)
-#         if is_bool_dtype(s):
-#             return s.astype(float, copy=False)
-#         return pd.to_numeric(s, errors="coerce").astype(float, copy=False)
-
-
-#     def pretty(self) -> str:
-#         return self.col
-
-# src/txgraffiti2025/forms/utils.py
 
 class ColumnTerm(Expr):
     """
@@ -418,98 +351,6 @@ def _expr_outer_symbol(s: str) -> str:
         if op in s:
             return op.strip()
     return "unary"
-
-# class BinOp(Expr):
-#     def __init__(self, fn: Callable[[SeriesLike, SeriesLike], SeriesLike], left: Expr, right: Expr):
-#         self.fn, self.left, self.right = fn, left, right
-
-#     def eval(self, df: pd.DataFrame) -> pd.Series:
-#         l = _as_series(self.left.eval(df), df.index)
-#         r = _as_series(self.right.eval(df), df.index)
-#         out = self.fn(l, r)  # may be Series or ndarray
-#         return _as_series(out, df.index)
-
-#     def pretty(self) -> str:
-#         # Map numpy ufunc to symbol
-#         sym = {
-#             np.add: "+", np.subtract: "-", np.multiply: "·",
-#             np.divide: "/", np.mod: "%", np.power: "**",
-#         }.get(self.fn, "op")
-
-#         # ---------- Special pretty for power with small integer exponents ----------
-#         if sym == "**":
-#             if isinstance(self.right, Const):
-#                 try:
-#                     f = float(self.right.value)
-#                     if f.is_integer():
-#                         n = int(f)
-#                         if n == 2:
-#                             base = self.left.pretty()
-#                             if _need_parens(
-#                                 _PRECEDENCE.get(_expr_outer_symbol(base), 3),
-#                                 _PRECEDENCE["**"],
-#                             ):
-#                                 base = f"({base})"
-#                             return f"{base}{_SUP2}"
-#                         if n == 3:
-#                             base = self.left.pretty()
-#                             if _need_parens(
-#                                 _PRECEDENCE.get(_expr_outer_symbol(base), 3),
-#                                 _PRECEDENCE["**"],
-#                             ):
-#                                 base = f"({base})"
-#                             return f"{base}{_SUP3}"
-#                 except Exception:
-#                     pass
-#             # generic power
-#             left_s = self.left.pretty()
-#             right_s = self.right.pretty()
-#             lp = _PRECEDENCE.get(_expr_outer_symbol(left_s), 3)
-#             rp = _PRECEDENCE.get(_expr_outer_symbol(right_s), 3)
-#             if _need_parens(lp, _PRECEDENCE["**"]):
-#                 left_s = f"({left_s})"
-#             if _need_parens(rp, _PRECEDENCE["**"], is_right_assoc=True, is_right_child=True):
-#                 right_s = f"({right_s})"
-#             return f"{left_s}^{right_s}"
-
-#         # ---------- Tiny algebraic simplifications with 0 ----------
-#         def _is_zero_expr(e: Expr) -> bool:
-#             from fractions import Fraction
-#             if isinstance(e, Const):
-#                 try:
-#                     v = e.value
-#                     if isinstance(v, Fraction):
-#                         return v == 0
-#                     f = float(v)
-#                     return abs(f) < 1e-12
-#                 except Exception:
-#                     return False
-#             return False
-
-#         # x + 0  →  x ;  0 + x → x
-#         if sym == "+":
-#             if _is_zero_expr(self.left):
-#                 return self.right.pretty()
-#             if _is_zero_expr(self.right):
-#                 return self.left.pretty()
-
-#         # x - 0 → x  (but keep 0 - x as-is: that's handled downstream)
-#         if sym == "-":
-#             if _is_zero_expr(self.right):
-#                 return self.left.pretty()
-
-#         # ---------- Normal binary ops with precedence-aware parentheses ----------
-#         parent_prec = 2 if sym in ("·", "/", "%") else 1
-#         left_s = self.left.pretty()
-#         right_s = self.right.pretty()
-#         lp = _PRECEDENCE.get(_expr_outer_symbol(left_s), 3)
-#         rp = _PRECEDENCE.get(_expr_outer_symbol(right_s), 3)
-#         if _need_parens(lp, parent_prec, is_right_assoc=False, is_right_child=False):
-#             left_s = f"({left_s})"
-#         if _need_parens(rp, parent_prec, is_right_assoc=False, is_right_child=True):
-#             right_s = f"({right_s})"
-#         return f"({left_s} {sym} {right_s})"
-
 
 class BinOp(Expr):
     def __init__(self, fn: Callable[[SeriesLike, SeriesLike], SeriesLike], left: Expr, right: Expr):

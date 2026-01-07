@@ -1,4 +1,3 @@
-
 # src/txgraffiti/graffiti3/graffiti3.py
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from .exprs import (
     max_ as max_expr,
     log as log_expr,
 )
-from .relations import Conjecture
+from .relations import Conjecture, LeanEnv
 from .utils import (
     _filter_by_touch,
     _dedup_conjectures,
@@ -47,6 +46,8 @@ from txgraffiti.graffiti3.runners.nonlinear_multi import (
     log_sum_runner,
 )
 from txgraffiti.graffiti3.runners.exp_exponent import exp_exponent_runner
+
+from txgraffiti.graffiti3.relations import sophie_condition_to_lean_theorem
 # ───────────────────────── enums ───────────────────────── #
 
 class Stage(str, Enum):
@@ -131,6 +132,7 @@ class Graffiti3:
         dalmatian_filter=None,
         sophie_cfg: Optional[Dict[str, Any]] = None,
         min_touches: int = 3,
+        lean_label: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Parameters
@@ -147,6 +149,10 @@ class Graffiti3:
             Minimum #equalities required for a conjecture to enter heuristics/Sophie.
         """
         self.df = df.copy()
+
+        # Optional Lean4 labels (column/property -> Lean term/type)
+        self.lean_env: LeanEnv = LeanEnv.from_mapping(lean_label)
+        self.lean_label = lean_label
         self.gcr = GraffitiClassRelations(self.df)
 
         # heuristic hooks
@@ -1323,10 +1329,87 @@ class Graffiti3:
                 k_conjectures=show_k_conjectures,
                 k_sophie=show_k_conjectures,
             )
+        self.result = result
+        if self.lean_label:
+            self.lean_necessary_statements = self.conjectures_as_lean(all_conjs, prefix="Necessary_Condition", start_index=1)
+            self.lean_sufficient_statements = self.sophie_conditions_as_lean(all_sophie_ranked, prefix="Sufficient_Condition", start_index=1)
         return result
 
 
+    # ──────────────────────── Lean4 utilities ────────────────────────
+
+    from typing import Sequence, List, Optional
+
+    def conjectures_as_lean(
+        self,
+        conjectures: Optional[Sequence["Conjecture"]] = None,
+        *,
+        prefix: str = "TxGraffitiBench",
+        start_index: int = 1,
+        include_sorry: bool = True,
+        attach: bool = False,
+    ) -> List[str]:
+        """Render conjectures as Lean4 theorem stubs."""
+        if not self.lean_env or not self.lean_env.labels:
+            raise ValueError("No Lean labels provided (pass lean_label=... to Graffiti3).")
+
+        if conjectures is None:
+            if self.result is None:
+                raise ValueError("No conjectures provided and self.result is None.")
+            conjectures = self.result.conjectures
+
+        out: List[str] = []
+        for k, c in enumerate(conjectures, start=start_index):
+            thm = f"{prefix}_{k}"
+            s = c.to_lean_theorem(
+                self.lean_env,
+                thm,
+                base_condition=self.base_property,
+                include_sorry=include_sorry,
+            )
+            out.append(s)
+            if attach:
+                setattr(c, "lean_theorem", s)
+
+        return out
+
+
+    def sophie_conditions_as_lean(
+        self,
+        sophie_conditions: Optional[Sequence["SophieCondition"]] = None,
+        *,
+        prefix: str = "TxGraffitiSophie",
+        start_index: int = 1,
+        include_sorry: bool = True,
+        attach: bool = False,
+    ) -> List[str]:
+        if not self.lean_env or not self.lean_env.labels:
+            raise ValueError("No Lean labels provided (pass lean_label=... to Graffiti3).")
+
+        if sophie_conditions is None:
+            if self.result is None:
+                raise ValueError("No sophie conditions provided and self.result is None.")
+            sophie_conditions = self.result.sophie_conditions
+
+        out: List[str] = []
+        for k, sc in enumerate(sophie_conditions, start=start_index):
+            thm = f"{prefix}_{k}"
+            s = sophie_condition_to_lean_theorem(
+                sc,
+                self.lean_env,
+                thm,
+                base_condition=self.base_property,
+                include_sorry=include_sorry,
+            )
+            out.append(s)
+            if attach:
+                setattr(sc, "lean_theorem", s)
+        return out
+
+
 # ───────────────── Sophie helpers / pretty printer ───────────────── #
+
+
 
 def sophie_runner(
     *,
@@ -1374,28 +1457,6 @@ def _group_sophie_by_property(
         out.setdefault(sc.property_name, []).append(sc)
     return out
 
-
-# def print_g3_result(
-#     result: Graffiti3Result,
-#     *,
-#     k_conjectures: int = 20,
-#     k_sophie: int = 20,
-# ) -> None:
-#     """
-#     Convenience printer for Graffiti3Result: stage breakdown, top conjectures
-#     (sorted by touches), and top Sophie conditions.
-#     """
-#     print("Stage breakdown:", result.stage_breakdown)
-#     print(f"Total conjectures: {len(result.conjectures)}")
-#     print(f"Total Sophie conditions: {len(result.sophie_conditions)}\n")
-
-#     print("=== Top conjectures (by touch_count, then support) ===\n")
-#     for i, c in enumerate(result.conjectures[:k_conjectures], 1):
-#         touches = getattr(c, "touch_count", getattr(c, "touch", "?"))
-#         support = getattr(c, "support_n", getattr(c, "support", "?"))
-#         print(f"Conjecture {i}. {c.pretty()}   [touches={touches}, support={support}]\n")
-
-#     print_sophie_conditions(result.sophie_conditions, top_n=k_sophie)
 
 from textwrap import fill, indent
 from typing import Mapping, Optional

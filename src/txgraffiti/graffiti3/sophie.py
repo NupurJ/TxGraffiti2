@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Dict, List, Sequence, Tuple, Set, Any
-
 import numpy as np
 import pandas as pd
 
-from .relations import Conjecture
-
+from .relations import Conjecture, Relation, Le, Lt, Eq, Ge, Gt
 
 # ───────────────────────── data class ───────────────────────── #
 
@@ -30,6 +28,7 @@ class SophieCondition:
     support_h: int             # # graphs where hypothesis holds (within base)
     coverage: int              # # target graphs covered (H ∧ P)
     target_size: int           # |P| inside base
+    hyp_relation: Relation
     violations: int            # # graphs where H holds but P fails (within base)
 
 
@@ -79,6 +78,263 @@ def _parse_relation_text(c: Conjecture) -> Tuple[str, str] | None:
             return lhs.strip(), rhs.strip()
     return None
 
+# def _build_inequality_property_masks(
+#     df_num: pd.DataFrame,
+#     base_mask: np.ndarray,
+#     inequality_conjectures: Sequence[Conjecture],
+#     *,
+#     eq_tol: float = 1e-4,
+# ) -> Tuple[Dict[str, np.ndarray], Dict[str, Relation]]:
+#     """
+#     Construct boolean masks for inequality events derived from Conjectures,
+#     AND return the corresponding Relation objects for each label.
+
+#     For each Conjecture c, we treat its relation
+
+#         L(x)  ?  R(x)
+
+#     as a *global* numeric relation over df_num and build masks inside the
+#     base universe:
+
+#         - L = R
+#         - L < R
+#         - L > R
+#         - L ≤ R  (L < R or L = R)
+#         - L ≥ R  (L > R or L = R)
+
+#     Each such event becomes a property-label, e.g.
+
+#         "independence_number = harmonic_index"
+#         "independence_number < order - matching_number"
+#         "independence_number ≥ (1/2) · order"
+
+#     Returns
+#     -------
+#     (prop_masks, prop_rels)
+#       prop_masks: Mapping label → boolean mask over df_num.index.
+#       prop_rels:  Mapping label → Relation object (Eq/Lt/Gt/Le/Ge over the same Expr trees).
+#     """
+#     N = len(df_num)
+#     base_mask = np.asarray(base_mask, dtype=bool)
+#     if base_mask.shape != (N,):
+#         raise ValueError("base_mask must have shape (len(df_num),).")
+
+#     prop_masks: Dict[str, np.ndarray] = {}
+#     prop_rels: Dict[str, Relation] = {}
+
+#     def update_mask(label: str, mask: np.ndarray) -> None:
+#         """Safely append a mask to a property label."""
+#         if mask.any():
+#             existing = prop_masks.get(label)
+#             if existing is None:
+#                 prop_masks[label] = mask.copy()
+#             else:
+#                 existing |= mask
+
+#     def update_rel(label: str, rel: Relation) -> None:
+#         """
+#         Store the Relation corresponding to a label.
+
+#         If the label is seen multiple times (due to multiple conjectures producing
+#         the same pretty text), keep the first. They should be structurally equivalent.
+#         """
+#         if label not in prop_rels:
+#             prop_rels[label] = rel
+
+#     for c in inequality_conjectures:
+#         parsed = _parse_relation_text(c)
+#         if parsed is None:
+#             continue
+#         lhs_text, rhs_text = parsed
+
+#         # Evaluate both sides numerically over df_num
+#         try:
+#             L_vals = c.relation.left.eval(df_num)
+#             R_vals = c.relation.right.eval(df_num)
+#         except Exception:
+#             continue
+
+#         L = np.asarray(L_vals, dtype=float)
+#         R = np.asarray(R_vals, dtype=float)
+
+#         if L.shape == ():
+#             L = np.full(N, float(L), dtype=float)
+#         if R.shape == ():
+#             R = np.full(N, float(R), dtype=float)
+
+#         if L.shape != (N,) or R.shape != (N,):
+#             continue
+
+#         # Initialize masks
+#         eq_mask = np.zeros(N, dtype=bool)
+#         lt_mask = np.zeros(N, dtype=bool)
+#         gt_mask = np.zeros(N, dtype=bool)
+
+#         bm = base_mask
+#         eq_mask[bm] = np.isclose(L[bm], R[bm], rtol=1e-9, atol=eq_tol)
+#         lt_mask[bm] = L[bm] < R[bm] - eq_tol
+#         gt_mask[bm] = L[bm] > R[bm] + eq_tol
+
+#         # Inclusive forms
+#         le_mask = eq_mask | lt_mask
+#         ge_mask = eq_mask | gt_mask
+
+#         # Labels
+#         lab_eq = f"{lhs_text} = {rhs_text}"
+#         lab_lt = f"{lhs_text} < {rhs_text}"
+#         lab_gt = f"{lhs_text} > {rhs_text}"
+#         lab_le = f"{lhs_text} ≤ {rhs_text}"
+#         lab_ge = f"{lhs_text} ≥ {rhs_text}"
+
+#         # Register masks
+#         update_mask(lab_eq, eq_mask)
+#         update_mask(lab_lt, lt_mask)
+#         update_mask(lab_gt, gt_mask)
+#         update_mask(lab_le, le_mask)
+#         update_mask(lab_ge, ge_mask)
+
+#         # Register relations (the important new part for Lean emission)
+#         L_expr = c.relation.left
+#         R_expr = c.relation.right
+
+#         # canonicalize Eq orientation
+#         L_eq, R_eq = L_expr, R_expr
+#         try:
+#             if repr(R_eq) < repr(L_eq):
+#                 L_eq, R_eq = R_eq, L_eq
+#         except Exception:
+#             pass
+
+#         update_rel(lab_eq, Eq(L_expr, R_expr))
+#         update_rel(lab_lt, Lt(L_expr, R_expr))
+#         update_rel(lab_gt, Gt(L_expr, R_expr))
+#         update_rel(lab_le, Le(L_expr, R_expr))
+#         update_rel(lab_ge, Ge(L_expr, R_expr))
+
+#     return prop_masks, prop_rels
+
+# def _build_inequality_property_masks(
+#     df_num: pd.DataFrame,
+#     base_mask: np.ndarray,
+#     inequality_conjectures: Sequence[Conjecture],
+#     *,
+#     eq_tol: float = 1e-4,
+# ) -> Tuple[Dict[str, np.ndarray], Dict[str, Relation]]:
+#     """
+#     Construct boolean masks for inequality events derived from Conjectures,
+#     AND return the corresponding Relation objects for each label.
+
+#     IMPORTANT FIX:
+#       - Canonicalize equality labels so "a = b" and "b = a" deduplicate.
+#       - Store Eq relation in the same canonical orientation.
+#     """
+#     N = len(df_num)
+#     base_mask = np.asarray(base_mask, dtype=bool)
+#     if base_mask.shape != (N,):
+#         raise ValueError("base_mask must have shape (len(df_num),).")
+
+#     prop_masks: Dict[str, np.ndarray] = {}
+#     prop_rels: Dict[str, Relation] = {}
+
+#     def update_mask(label: str, mask: np.ndarray) -> None:
+#         """Safely append a mask to a property label."""
+#         if mask.any():
+#             existing = prop_masks.get(label)
+#             if existing is None:
+#                 prop_masks[label] = mask.copy()
+#             else:
+#                 existing |= mask
+
+#     def update_rel(label: str, rel: Relation) -> None:
+#         """
+#         Store the Relation corresponding to a label.
+#         If the label is seen multiple times, keep the first.
+#         """
+#         if label not in prop_rels:
+#             prop_rels[label] = rel
+
+#     def canon_eq_sides(lhs: str, rhs: str) -> Tuple[str, str, bool]:
+#         """
+#         Canonicalize text sides for equality labels.
+#         Returns (lhs2, rhs2, swapped) where swapped=True means original was rhs=lhs2.
+#         """
+#         a = lhs.strip()
+#         b = rhs.strip()
+#         # stable ordering: first by length then lexicographically
+#         if (len(b), b) < (len(a), a):
+#             return b, a, True
+#         return a, b, False
+
+#     for c in inequality_conjectures:
+#         parsed = _parse_relation_text(c)
+#         if parsed is None:
+#             continue
+#         lhs_text, rhs_text = parsed
+
+#         # Evaluate both sides numerically over df_num
+#         try:
+#             L_vals = c.relation.left.eval(df_num)
+#             R_vals = c.relation.right.eval(df_num)
+#         except Exception:
+#             continue
+
+#         L = np.asarray(L_vals, dtype=float)
+#         R = np.asarray(R_vals, dtype=float)
+
+#         if L.shape == ():
+#             L = np.full(N, float(L), dtype=float)
+#         if R.shape == ():
+#             R = np.full(N, float(R), dtype=float)
+
+#         if L.shape != (N,) or R.shape != (N,):
+#             continue
+
+#         # Initialize masks
+#         eq_mask = np.zeros(N, dtype=bool)
+#         lt_mask = np.zeros(N, dtype=bool)
+#         gt_mask = np.zeros(N, dtype=bool)
+
+#         bm = base_mask
+#         eq_mask[bm] = np.isclose(L[bm], R[bm], rtol=1e-9, atol=eq_tol)
+#         lt_mask[bm] = L[bm] < R[bm] - eq_tol
+#         gt_mask[bm] = L[bm] > R[bm] + eq_tol
+
+#         le_mask = eq_mask | lt_mask
+#         ge_mask = eq_mask | gt_mask
+
+#         # Canonicalize equality label (only equality)
+#         lhs_eq, rhs_eq, swapped = canon_eq_sides(lhs_text, rhs_text)
+
+#         lab_eq = f"{lhs_eq} = {rhs_eq}"
+#         lab_lt = f"{lhs_text} < {rhs_text}"
+#         lab_gt = f"{lhs_text} > {rhs_text}"
+#         lab_le = f"{lhs_text} ≤ {rhs_text}"
+#         lab_ge = f"{lhs_text} ≥ {rhs_text}"
+
+#         # Register masks
+#         update_mask(lab_eq, eq_mask)
+#         update_mask(lab_lt, lt_mask)
+#         update_mask(lab_gt, gt_mask)
+#         update_mask(lab_le, le_mask)
+#         update_mask(lab_ge, ge_mask)
+
+#         # Register relations
+#         L_expr = c.relation.left
+#         R_expr = c.relation.right
+
+#         # Make Eq relation match the canonical label orientation
+#         if swapped:
+#             L_eq, R_eq = R_expr, L_expr
+#         else:
+#             L_eq, R_eq = L_expr, R_expr
+
+#         update_rel(lab_eq, Eq(L_eq, R_eq))
+#         update_rel(lab_lt, Lt(L_expr, R_expr))
+#         update_rel(lab_gt, Gt(L_expr, R_expr))
+#         update_rel(lab_le, Le(L_expr, R_expr))
+#         update_rel(lab_ge, Ge(L_expr, R_expr))
+
+#     return prop_masks, prop_rels
 
 def _build_inequality_property_masks(
     df_num: pd.DataFrame,
@@ -86,47 +342,16 @@ def _build_inequality_property_masks(
     inequality_conjectures: Sequence[Conjecture],
     *,
     eq_tol: float = 1e-4,
-) -> Dict[str, np.ndarray]:
-    """
-    Construct boolean masks for inequality events derived from Conjectures.
-
-    For each Conjecture c, we treat its relation
-
-        L(x)  ?  R(x)
-
-    as a *global* numeric relation over df_num and build masks inside the
-    base universe:
-
-        - L = R
-        - L < R
-        - L > R
-        - L ≤ R  (L < R or L = R)
-        - L ≥ R  (L > R or L = R)
-
-    Each such event becomes a property-label, e.g.
-
-        "independence_number = harmonic_index"
-        "independence_number < order - matching_number"
-        "independence_number ≥ (1/2) · order"
-
-    This mirrors the inequality-based Sophie heuristic from Graffiti.pc:
-    inequalities are treated as predicates on graphs, independent of the
-    LP hypothesis that produced them.
-
-    Returns
-    -------
-    Dict[str, np.ndarray]
-        Mapping property-label → boolean mask over df_num.index.
-    """
+) -> Tuple[Dict[str, np.ndarray], Dict[str, Relation]]:
     N = len(df_num)
     base_mask = np.asarray(base_mask, dtype=bool)
     if base_mask.shape != (N,):
         raise ValueError("base_mask must have shape (len(df_num),).")
 
     prop_masks: Dict[str, np.ndarray] = {}
+    prop_rels: Dict[str, Relation] = {}
 
     def update_mask(label: str, mask: np.ndarray) -> None:
-        """Safely append a mask to a property label."""
         if mask.any():
             existing = prop_masks.get(label)
             if existing is None:
@@ -134,57 +359,88 @@ def _build_inequality_property_masks(
             else:
                 existing |= mask
 
+    def update_rel(label: str, rel: Relation) -> None:
+        if label not in prop_rels:
+            prop_rels[label] = rel
+
+    def canon_eq(lhs: str, rhs: str) -> Tuple[str, str, bool]:
+        a = lhs.strip()
+        b = rhs.strip()
+        if (len(b), b) < (len(a), a):
+            return b, a, True
+        return a, b, False
+
     for c in inequality_conjectures:
         parsed = _parse_relation_text(c)
         if parsed is None:
             continue
         lhs_text, rhs_text = parsed
 
-        # Evaluate both sides numerically over df_num
         try:
             L_vals = c.relation.left.eval(df_num)
             R_vals = c.relation.right.eval(df_num)
         except Exception:
-            # If evaluation fails for any reason, skip this conjecture
             continue
 
         L = np.asarray(L_vals, dtype=float)
         R = np.asarray(R_vals, dtype=float)
-
         if L.shape == ():
             L = np.full(N, float(L), dtype=float)
         if R.shape == ():
             R = np.full(N, float(R), dtype=float)
-
         if L.shape != (N,) or R.shape != (N,):
-            # Unexpected shape; skip
             continue
 
-        # Initialize masks
+        bm = base_mask
         eq_mask = np.zeros(N, dtype=bool)
         lt_mask = np.zeros(N, dtype=bool)
         gt_mask = np.zeros(N, dtype=bool)
 
-        # Compute inside base universe
-        bm = base_mask
-        # Equality
         eq_mask[bm] = np.isclose(L[bm], R[bm], rtol=1e-9, atol=eq_tol)
-        # Strict inequalities
         lt_mask[bm] = L[bm] < R[bm] - eq_tol
         gt_mask[bm] = L[bm] > R[bm] + eq_tol
 
-        # Register events (same pattern as your old Graffiti3 code)
-        update_mask(f"{lhs_text} = {rhs_text}", eq_mask)
-        update_mask(f"{lhs_text} < {rhs_text}", lt_mask)
-        update_mask(f"{lhs_text} > {rhs_text}", gt_mask)
-
-        # Inclusive forms
         le_mask = eq_mask | lt_mask
         ge_mask = eq_mask | gt_mask
-        update_mask(f"{lhs_text} ≤ {rhs_text}", le_mask)
-        update_mask(f"{lhs_text} ≥ {rhs_text}", ge_mask)
 
-    return prop_masks
+        # Expr trees
+        L_expr = c.relation.left
+        R_expr = c.relation.right
+
+        # --- Canonical labels / relations ---
+        # Equality: canonicalize sides
+        lhs_eq, rhs_eq, swapped_eq = canon_eq(lhs_text, rhs_text)
+        if swapped_eq:
+            L_eq, R_eq = R_expr, L_expr
+        else:
+            L_eq, R_eq = L_expr, R_expr
+        lab_eq = f"{lhs_eq} = {rhs_eq}"
+        update_mask(lab_eq, eq_mask)
+        update_rel(lab_eq, Eq(L_eq, R_eq))
+
+        # Strict: ONLY emit "<" form, never ">"
+        # L < R is canonical as-is
+        lab_lt = f"{lhs_text} < {rhs_text}"
+        update_mask(lab_lt, lt_mask)
+        update_rel(lab_lt, Lt(L_expr, R_expr))
+
+        # For ">", canonicalize by swapping: (L > R) becomes (R < L)
+        lab_gt_canon = f"{rhs_text} < {lhs_text}"
+        update_mask(lab_gt_canon, gt_mask)
+        update_rel(lab_gt_canon, Lt(R_expr, L_expr))
+
+        # Non-strict: ONLY emit "≤" form, never "≥"
+        lab_le = f"{lhs_text} ≤ {rhs_text}"
+        update_mask(lab_le, le_mask)
+        update_rel(lab_le, Le(L_expr, R_expr))
+
+        # Canonicalize "≥" by swapping: (L ≥ R) becomes (R ≤ L)
+        lab_ge_canon = f"{rhs_text} ≤ {lhs_text}"
+        update_mask(lab_ge_canon, ge_mask)
+        update_rel(lab_ge_canon, Le(R_expr, L_expr))
+
+    return prop_masks, prop_rels
+
 
 def _property_complexity(label: str) -> int:
     """
@@ -351,15 +607,15 @@ def discover_sophie_from_inequalities(
     if base_mask.shape != (N,):
         raise ValueError("base_mask must have shape (len(df_num),).")
 
-    # 1️⃣ Build inequality events I: label → mask
-    ineq_masks = _build_inequality_property_masks(
+    ineq_masks, ineq_rels = _build_inequality_property_masks(
         df_num=df_num,
         base_mask=base_mask,
         inequality_conjectures=inequality_conjectures,
         eq_tol=eq_tol,
     )
     if not ineq_masks:
-        return {}
+        return
+
 
     # 2️⃣ Build property expressions P
     property_exprs = _register_property_exprs(
@@ -447,17 +703,25 @@ def discover_sophie_from_inequalities(
                 break
 
             cand = candidates[best_idx]
+            hyp_label = cand["hyp_label"]
+            hyp_rel = ineq_rels.get(hyp_label)
+            if hyp_rel is None:
+                # should not happen unless label collisions/parsing changed
+                continue
+
             accepted.append(
                 SophieCondition(
                     property_name=prop_label,
-                    hyp_name=cand["hyp_label"],
-                    core_hyp_name=cand["hyp_label"],
+                    hyp_name=hyp_label,
+                    core_hyp_name=hyp_label,
+                    hyp_relation=hyp_rel,          # NEW
                     support_h=cand["support_h"],
                     coverage=len(best_new_covered),
                     target_size=target_size,
                     violations=cand["violations"],
                 )
             )
+
             uncovered -= best_new_covered
 
         if accepted:

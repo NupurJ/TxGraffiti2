@@ -87,87 +87,16 @@ def _nice_fraction(
     return frac
 
 
-def _annotate_and_sort_conjectures(
-    df: pd.DataFrame,
-    conjs: Sequence[Conjecture],
-) -> List[Conjecture]:
-    """
-    Compute touch_count and support_n for each conjecture, deduplicate by
-    signature, and sort by (touch_count, support_n) descending.
-    """
-    unique: List[Conjecture] = []
-    seen: set[str] = set()
-
-    for c in conjs:
-        sig = c.signature()
-        if sig in seen:
-            continue
-        seen.add(sig)
-
-        # Compute touch_count once; Conjecture.touch_count mutates itself
-        touch_attr = getattr(c, "touch_count", None)
-        if callable(touch_attr):
-            try:
-                val = c.touch_count(df, auto_base=False)
-            except TypeError:
-                # Fallback if signature differs
-                val = c.touch_count(df)
-        else:
-            # Already materialized as an int
-            val = touch_attr if isinstance(touch_attr, int) else 0
-
-        setattr(c, "touch_count", int(val))
-        setattr(c, "touch", int(val))  # for backward compatibility
-
-        # Compute support_n: how many rows are in the hypothesis class
-        try:
-            applicable, _, _ = c.check(df, auto_base=False)
-            support = int(applicable.sum())
-        except Exception:
-            support = 0
-
-        setattr(c, "support_n", support)
-        setattr(c, "support", support)
-
-        unique.append(c)
-
-    unique.sort(
-        key=lambda cc: (
-            int(getattr(cc, "touch_count", 0)),
-            int(getattr(cc, "support_n", 0)),
-        ),
-        reverse=True,
-    )
-    return unique
-
 # def _annotate_and_sort_conjectures(
 #     df: pd.DataFrame,
 #     conjs: Sequence[Conjecture],
 # ) -> List[Conjecture]:
 #     """
 #     Compute touch_count and support_n for each conjecture, deduplicate by
-#     signature, and sort by a "purity-like" score rather than raw touch.
-
-#     New annotations per conjecture:
-#       - touch_count : int      (number of equality touches)
-#       - touch       : int      (alias for backward compatibility)
-#       - support_n   : int      (size of hypothesis class)
-#       - support     : int      (alias)
-#       - touch_density : float  (touch_count / support_n, in [0,1] when support_n>0)
-#       - support_frac  : float  (support_n / len(df), coverage of the dataset)
-
-#     Sorting order (descending):
-#       1. touch_density   (fraction of the class where equality holds)
-#       2. touch_count     (absolute number of equality instances)
-#       3. support_n       (size of the hypothesis class)
-
-#     This favors conjectures that are both "pure" (high density) and
-#     non-trivial (decent touch/support), instead of just those with large
-#     raw touch on huge classes.
+#     signature, and sort by (touch_count, support_n) descending.
 #     """
 #     unique: List[Conjecture] = []
 #     seen: set[str] = set()
-#     n_total = int(len(df))
 
 #     for c in conjs:
 #         sig = c.signature()
@@ -175,23 +104,22 @@ def _annotate_and_sort_conjectures(
 #             continue
 #         seen.add(sig)
 
-#         # --- touch_count (and touch) ---
+#         # Compute touch_count once; Conjecture.touch_count mutates itself
 #         touch_attr = getattr(c, "touch_count", None)
 #         if callable(touch_attr):
 #             try:
-#                 touch_val = c.touch_count(df, auto_base=False)
+#                 val = c.touch_count(df, auto_base=False)
 #             except TypeError:
 #                 # Fallback if signature differs
-#                 touch_val = c.touch_count(df)
+#                 val = c.touch_count(df)
 #         else:
 #             # Already materialized as an int
-#             touch_val = touch_attr if isinstance(touch_attr, int) else 0
+#             val = touch_attr if isinstance(touch_attr, int) else 0
 
-#         touch = int(touch_val)
-#         setattr(c, "touch_count", touch)
-#         setattr(c, "touch", touch)  # backward compatibility
+#         setattr(c, "touch_count", int(val))
+#         setattr(c, "touch", int(val))  # for backward compatibility
 
-#         # --- support_n (and support) ---
+#         # Compute support_n: how many rows are in the hypothesis class
 #         try:
 #             applicable, _, _ = c.check(df, auto_base=False)
 #             support = int(applicable.sum())
@@ -201,31 +129,223 @@ def _annotate_and_sort_conjectures(
 #         setattr(c, "support_n", support)
 #         setattr(c, "support", support)
 
-#         # --- densities / fractions ---
-#         if support > 0:
-#             density = float(touch) / float(support)
-#             density = density*n_total
-#         else:
-#             density = 0.0
-
-#         if n_total > 0:
-#             support_frac = float(support) / float(n_total)
-#             density = density*n_total
-#         else:
-#             support_frac = 0.0
-
-#         setattr(c, "touch_density", density)
-#         setattr(c, "support_frac", support_frac)
-
 #         unique.append(c)
 
-#     # Sort by (touch_density, touch_count, support_n) descending
 #     unique.sort(
 #         key=lambda cc: (
-#             float(getattr(cc, "touch_density", 0.0)),
 #             int(getattr(cc, "touch_count", 0)),
 #             int(getattr(cc, "support_n", 0)),
 #         ),
 #         reverse=True,
 #     )
 #     return unique
+
+# def _annotate_and_sort_conjectures(
+#     df: pd.DataFrame,
+#     conjs: Sequence[Conjecture],
+# ) -> List[Conjecture]:
+#     """
+#     Compute touch_count and support_n for each conjecture, optionally upgrade
+#     non-strict inequalities (≤/≥) to equations when touch == support, then
+#     deduplicate by signature, and sort by (touch_count, support_n) descending.
+#     """
+#     # Local import to avoid circular imports at module import time
+#     from txgraffiti.graffiti3.relations import Le, Ge, Eq
+
+#     unique: List[Conjecture] = []
+#     seen: set[str] = set()
+
+#     for c in conjs:
+#         # -----------------------------
+#         # Compute touch_count (tight rows)
+#         # -----------------------------
+#         touch_attr = getattr(c, "touch_count", None)
+#         if callable(touch_attr):
+#             try:
+#                 val = c.touch_count(df, auto_base=False)
+#             except TypeError:
+#                 val = c.touch_count(df)
+#             except Exception:
+#                 val = 0
+#         else:
+#             val = touch_attr if isinstance(touch_attr, int) else 0
+
+#         val = int(val)
+#         setattr(c, "touch_count", val)
+#         setattr(c, "touch", val)  # backward compatibility
+
+#         # -----------------------------
+#         # Compute support_n (applicable rows)
+#         # -----------------------------
+#         try:
+#             applicable, _, _ = c.check(df, auto_base=False)
+#             support = int(applicable.sum())
+#         except Exception:
+#             support = 0
+
+#         setattr(c, "support_n", support)
+#         setattr(c, "support", support)
+
+#         # -----------------------------
+#         # NEW: If inequality is always tight on its support, convert to equality
+#         # touch == support means slack ≈ 0 for every applicable row.
+#         # Only safe for non-strict inequalities Le/Ge.
+#         # -----------------------------
+#         if support > 0 and val == support:
+#             R = getattr(c, "relation", None)
+#             if isinstance(R, (Le, Ge)):
+#                 left = R.left
+#                 right = R.right
+
+#                 # Canonicalize equality orientation to reduce duplicates:
+#                 # choose a deterministic order based on repr
+#                 try:
+#                     if repr(right) < repr(left):
+#                         left, right = right, left
+#                 except Exception:
+#                     pass
+
+#                 # For dataset-derived equalities, tol=0.0 is usually what you want.
+#                 # (You can use 1e-12 if you prefer numerical robustness.)
+#                 c.relation = Eq(left, right, tol=0.0)
+
+#         # -----------------------------
+#         # Deduplicate AFTER possible rewrite
+#         # -----------------------------
+#         sig = c.signature()
+#         if sig in seen:
+#             continue
+#         seen.add(sig)
+
+#         unique.append(c)
+
+#     unique.sort(
+#         key=lambda cc: (
+#             int(getattr(cc, "touch_count", 0)),
+#             int(getattr(cc, "support_n", 0)),
+#         ),
+#         reverse=True,
+#     )
+#     return unique
+
+def _annotate_and_sort_conjectures(
+    df: pd.DataFrame,
+    conjs: Sequence[Conjecture],
+) -> List[Conjecture]:
+    """
+    Compute touch_count and support_n for each conjecture, normalize relations so
+    logically equivalent forms deduplicate (e.g. L ≤ R vs R ≥ L), optionally
+    upgrade non-strict inequalities to Eq when touch == support, then deduplicate
+    by signature and sort.
+    """
+    from functools import reduce
+    from math import gcd
+
+    from txgraffiti.graffiti3.relations import Le, Lt, Ge, Gt, Eq
+
+    def _canon_relation_inplace(c: Conjecture) -> None:
+        """
+        Canonicalize the conjecture relation so that:
+          - Ge(L,R) becomes Le(R,L)
+          - Gt(L,R) becomes Lt(R,L)
+          - Eq(L,R) is ordered deterministically
+        This makes equivalent conjectures share the same signature.
+        """
+        R = getattr(c, "relation", None)
+        if R is None:
+            return
+
+        # Prefer only ≤, <, = in canonical form
+        if isinstance(R, Ge):
+            c.relation = Le(R.right, R.left)
+            R = c.relation
+        elif isinstance(R, Gt):
+            c.relation = Lt(R.right, R.left)
+            R = c.relation
+
+        # Canonicalize equality orientation
+        if isinstance(R, Eq):
+            L, RR = R.left, R.right
+            try:
+                if repr(RR) < repr(L):
+                    c.relation = Eq(RR, L, tol=getattr(R, "tol", 0.0))
+            except Exception:
+                pass
+
+    unique: List[Conjecture] = []
+    seen: set[str] = set()
+
+    for c in conjs:
+        # -----------------------------
+        # 1) Compute touch_count
+        # -----------------------------
+        touch_attr = getattr(c, "touch_count", None)
+        if callable(touch_attr):
+            try:
+                val = c.touch_count(df, auto_base=False)
+            except TypeError:
+                val = c.touch_count(df)
+            except Exception:
+                val = 0
+        else:
+            val = touch_attr if isinstance(touch_attr, int) else 0
+
+        val = int(val)
+        setattr(c, "touch_count", val)
+        setattr(c, "touch", val)  # backward compatibility
+
+        # -----------------------------
+        # 2) Compute support_n
+        # -----------------------------
+        try:
+            applicable, _, _ = c.check(df, auto_base=False)
+            support = int(applicable.sum())
+        except Exception:
+            support = 0
+
+        setattr(c, "support_n", support)
+        setattr(c, "support", support)
+
+        # -----------------------------
+        # 3) If inequality is always tight on its support, upgrade to equality
+        #    (touch == support) only meaningful for ≤ or ≥
+        # -----------------------------
+        if support > 0 and val == support:
+            R = getattr(c, "relation", None)
+            if isinstance(R, (Le, Ge)):
+                left = R.left
+                right = R.right
+                # Canonicalize equality orientation
+                try:
+                    if repr(right) < repr(left):
+                        left, right = right, left
+                except Exception:
+                    pass
+                c.relation = Eq(left, right, tol=0.0)
+
+        # -----------------------------
+        # 4) Canonicalize relation so ≥/ > duplicates collapse into ≤/ <
+        # -----------------------------
+        _canon_relation_inplace(c)
+
+        # -----------------------------
+        # 5) Deduplicate AFTER canonicalization
+        # -----------------------------
+        sig = c.signature()
+        if sig in seen:
+            continue
+        seen.add(sig)
+
+        unique.append(c)
+
+    # -----------------------------
+    # 6) Sort
+    # -----------------------------
+    unique.sort(
+        key=lambda cc: (
+            int(getattr(cc, "touch_count", 0)),
+            int(getattr(cc, "support_n", 0)),
+        ),
+        reverse=True,
+    )
+    return unique
