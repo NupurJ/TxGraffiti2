@@ -90,6 +90,47 @@ class Mode(str, Enum):
 ModeLike = Union[Mode, str]
 
 
+# ─────────────────── checkpoint helper ──────────────────────────── #
+
+def _write_conjecture_checkpoint(
+    path: str,
+    conjectures: "List[Any]",
+    target: str,
+    stage: str = "",
+) -> None:
+    """
+    Atomically overwrite *path* with the current conjecture pool.
+    Uses a .tmp sibling file + rename so readers never see a partial write.
+    """
+    import os
+    import tempfile
+    from datetime import datetime
+
+    lines: List[str] = []
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    stage_tag = f" | after stage '{stage}'" if stage else ""
+    lines.append(f"# Checkpoint: target='{target}'{stage_tag}")
+    lines.append(f"# Written: {ts}")
+    lines.append(f"# Conjectures: {len(conjectures)}")
+    lines.append("")
+    for i, c in enumerate(conjectures, 1):
+        try:
+            lines.append(f"{i}. {c.pretty()}")
+        except Exception:
+            lines.append(f"{i}. {repr(c)}")
+    content = "\n".join(lines) + "\n"
+
+    dir_ = os.path.dirname(os.path.abspath(path)) or "."
+    try:
+        fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        os.replace(tmp_path, path)
+    except Exception:
+        # Never crash the main pipeline over a checkpoint write
+        pass
+
+
 # ───────────────────────── main workspace ───────────────────────── #
 
 class Graffiti3:
@@ -606,6 +647,7 @@ class Graffiti3:
         sophie_stages: Optional[Sequence[StageLike]] = None,
         quick: Optional[bool] = None,
         verbose: bool = True,
+        checkpoint_file: Optional[str] = None,
     ) -> Graffiti3Result:
         """
         Main conjecturing driver for a single target.
@@ -698,10 +740,22 @@ class Graffiti3:
         min_touches = self.min_touches
         _t0 = time.perf_counter()
 
+        if checkpoint_file:
+            import os
+            from datetime import datetime as _dt
+            _cp_stem, _cp_ext = os.path.splitext(checkpoint_file)
+            _cp_ext = _cp_ext or ".txt"
+            checkpoint_file = f"{_cp_stem}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{_cp_ext}"
+
         if verbose:
             print(
                 f"[Graffiti3] target='{target}' | "
                 f"{len(stages_to_run)} stage(s): {[s.value for s in stages_to_run]}",
+                flush=True,
+            )
+            print(
+                f"[Graffiti3] dataset: {len(self.df)} rows, "
+                f"{len(self.df.columns)} columns: {list(self.df.columns)}",
                 flush=True,
             )
 
@@ -750,6 +804,8 @@ class Graffiti3:
 
             all_conjectures.extend(const_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.CONSTANT.value)
             all_sophie.extend(const_sophie)
 
             stage_info[Stage.CONSTANT.value] = dict(
@@ -780,6 +836,8 @@ class Graffiti3:
 
             all_conjectures.extend(ratio_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.RATIO.value)
             all_sophie.extend(ratio_sophie)
 
             stage_info[Stage.RATIO.value] = dict(
@@ -811,6 +869,8 @@ class Graffiti3:
 
             all_conjectures.extend(lp1_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP1.value)
             all_sophie.extend(lp1_sophie)
 
             stage_info[Stage.LP1.value] = dict(
@@ -855,6 +915,8 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT.value)
             all_sophie.extend(sqrt_sophie)
 
             stage_info[Stage.SQRT.value] = dict(
@@ -902,6 +964,8 @@ class Graffiti3:
 
             all_conjectures.extend(log_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LOG.value)
             all_sophie.extend(log_sophie)
 
             stage_info[Stage.LOG.value] = dict(
@@ -940,6 +1004,8 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_log_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_LOG.value)
             all_sophie.extend(sqrt_log_sophie)
 
             stage_info[Stage.SQRT_LOG.value] = dict(
@@ -976,6 +1042,8 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_pair_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_PAIR.value)
             all_sophie.extend(sqrt_pair_sophie)
 
             stage_info[Stage.SQRT_PAIR.value] = dict(
@@ -1012,6 +1080,8 @@ class Graffiti3:
 
             all_conjectures.extend(geom_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.GEOM_MEAN.value)
             all_sophie.extend(geom_sophie)
 
             stage_info[Stage.GEOM_MEAN.value] = dict(
@@ -1048,6 +1118,8 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_sum_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_SUM.value)
             all_sophie.extend(sqrt_sum_sophie)
 
             stage_info[Stage.SQRT_SUM.value] = dict(
@@ -1086,6 +1158,8 @@ class Graffiti3:
 
             all_conjectures.extend(log_sum_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LOG_SUM.value)
             all_sophie.extend(log_sum_sophie)
 
             stage_info[Stage.LOG_SUM.value] = dict(
@@ -1121,6 +1195,8 @@ class Graffiti3:
 
             all_conjectures.extend(exp_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.EXP_EXPONENT.value)
             all_sophie.extend(exp_conjs_sophie)
 
             stage_info[Stage.EXP_EXPONENT.value] = dict(
@@ -1162,6 +1238,8 @@ class Graffiti3:
 
             all_conjectures.extend(lp_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP2.value)
             all_sophie.extend(lp_sophie)
 
             stage_info[Stage.LP2.value] = dict(
@@ -1196,6 +1274,8 @@ class Graffiti3:
 
             all_conjectures.extend(lp3_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP3.value)
             all_sophie.extend(lp3_sophie)
 
             stage_info[Stage.LP3.value] = dict(
@@ -1230,6 +1310,8 @@ class Graffiti3:
 
             all_conjectures.extend(lp4_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP4.value)
             all_sophie.extend(lp4_sophie)
 
             stage_info[Stage.LP4.value] = dict(
@@ -1262,6 +1344,8 @@ class Graffiti3:
 
             all_conjectures.extend(poly_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.POLY_SINGLE.value)
             all_sophie.extend(poly_sophie)
 
             stage_info[Stage.POLY_SINGLE.value] = dict(
@@ -1293,6 +1377,8 @@ class Graffiti3:
 
             all_conjectures.extend(mixed_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            if checkpoint_file:
+                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.MIXED.value)
             all_sophie.extend(mixed_sophie)
 
             stage_info[Stage.MIXED.value] = dict(
@@ -1344,6 +1430,7 @@ class Graffiti3:
         verbose: bool = True,
         show: Optional[bool] = None,
         show_k_conjectures: Optional[int] = 20,
+        checkpoint_file: Optional[str] = None,
     ) -> Graffiti3Result:
         """
         Batch version of `conjecture` over multiple targets.
@@ -1375,6 +1462,7 @@ class Graffiti3:
                 sophie_stages=sophie_stages,
                 quick=quick,
                 verbose=verbose,
+                checkpoint_file=checkpoint_file,
             )
             all_conjs.extend(res.conjectures)
             all_sophie.extend(res.sophie_conditions)
