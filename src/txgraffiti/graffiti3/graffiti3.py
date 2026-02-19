@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -604,6 +605,7 @@ class Graffiti3:
         enable_sophie: bool = True,
         sophie_stages: Optional[Sequence[StageLike]] = None,
         quick: Optional[bool] = None,
+        verbose: bool = True,
     ) -> Graffiti3Result:
         """
         Main conjecturing driver for a single target.
@@ -694,6 +696,14 @@ class Graffiti3:
 
         target_expr = to_expr(target)
         min_touches = self.min_touches
+        _t0 = time.perf_counter()
+
+        if verbose:
+            print(
+                f"[Graffiti3] target='{target}' | "
+                f"{len(stages_to_run)} stage(s): {[s.value for s in stages_to_run]}",
+                flush=True,
+            )
 
         # ── 3. Build others pool (and maybe prefilter) ─────────────────
         others: Dict[str, Expr] = self._build_others_pool(
@@ -720,6 +730,9 @@ class Graffiti3:
 
         # ── Stage: CONSTANT ────────────────────────────────────────────
         if Stage.CONSTANT in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.CONSTANT) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.CONSTANT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             const_conjs = constant_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -746,6 +759,9 @@ class Graffiti3:
 
         # ── Stage: RATIO ───────────────────────────────────────────────
         if Stage.RATIO in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.RATIO) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.RATIO.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             ratio_conjs = ratio_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -773,6 +789,9 @@ class Graffiti3:
 
         # ── Stage: LP1 ────────────────────────────────────────────────
         if Stage.LP1 in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LP1) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP1.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             lp1_conjs = lp_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -801,6 +820,9 @@ class Graffiti3:
 
         # ── Stage: SQRT ───────────────────────────────────────────────
         if Stage.SQRT in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.SQRT) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             # collect from both sqrt runners, then filter + heuristics once
             sqrt_conjs_single = sqrt_single_runner(
                 target_col=target,
@@ -842,6 +864,9 @@ class Graffiti3:
 
         # ── Stage: LOG ────────────────────────────────────────────────
         if Stage.LOG in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LOG) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             log_conjs_single = log_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -886,6 +911,9 @@ class Graffiti3:
 
         # ── Stage: SQRT_LOG (x, √x, log x) ───────────────────────────
         if Stage.SQRT_LOG in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.SQRT_LOG) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             sqrt_log_conjs = x_sqrt_log_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -921,6 +949,9 @@ class Graffiti3:
 
         # ── Stage: SQRT_PAIR (√x, √y) ────────────────────────────────
         if Stage.SQRT_PAIR in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.SQRT_PAIR) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_PAIR.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             sqrt_pair_conjs = sqrt_pair_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -954,6 +985,9 @@ class Graffiti3:
 
         # ── Stage: GEOM_MEAN (x, √(x y)) ─────────────────────────────
         if Stage.GEOM_MEAN in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.GEOM_MEAN) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.GEOM_MEAN.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             geom_conjs = geom_mean_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -987,6 +1021,9 @@ class Graffiti3:
 
         # ── Stage: SQRT_SUM (x, √(x + y)) ────────────────────────────
         if Stage.SQRT_SUM in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.SQRT_SUM) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             sqrt_sum_conjs = sqrt_sum_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1020,6 +1057,9 @@ class Graffiti3:
 
         # ── Stage: LOG_SUM (x, log(x + y)) ───────────────────────────
         if Stage.LOG_SUM in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LOG_SUM) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             log_sum_conjs = log_sum_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1054,6 +1094,9 @@ class Graffiti3:
             )
 
         if Stage.EXP_EXPONENT in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.EXP_EXPONENT) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.EXP_EXPONENT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             exp_conjs = exp_exponent_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1094,6 +1137,9 @@ class Graffiti3:
 
         # ── Stage: LP (2 features) ────────────────────────────────────
         if Stage.LP2 in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LP2) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP2.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             lp_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1125,6 +1171,9 @@ class Graffiti3:
 
         # ── Stage: LP3 (3 features) ───────────────────────────────────
         if Stage.LP3 in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LP3) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP3.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             lp3_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1156,6 +1205,9 @@ class Graffiti3:
 
         # ── Stage: LP4 (4 features) ───────────────────────────────────
         if Stage.LP4 in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.LP4) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP4.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             lp4_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1187,6 +1239,9 @@ class Graffiti3:
 
         # ── Stage: POLY_SINGLE ────────────────────────────────────────
         if Stage.POLY_SINGLE in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.POLY_SINGLE) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.POLY_SINGLE.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             poly_conjs = poly_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1216,6 +1271,9 @@ class Graffiti3:
 
         # ── Stage: MIXED ──────────────────────────────────────────────
         if Stage.MIXED in stages_to_run_set:
+            if verbose:
+                _sn = stages_to_run.index(Stage.MIXED) + 1
+                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.MIXED.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
             mixed_conjs = mixed_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1253,6 +1311,15 @@ class Graffiti3:
         else:
             all_sophie_ranked = []
 
+        if verbose:
+            print(
+                f"[Graffiti3] Done. "
+                f"{len(all_conjectures)} conjecture(s), "
+                f"{len(all_sophie_ranked)} sophie condition(s). "
+                f"(total: {time.perf_counter() - _t0:.1f}s)",
+                flush=True,
+            )
+
         return Graffiti3Result(
             target=target,
             conjectures=all_conjectures,
@@ -1274,6 +1341,7 @@ class Graffiti3:
         enable_sophie: bool = True,
         sophie_stages: Optional[Sequence[StageLike]] = None,
         quick: Optional[bool] = None,
+        verbose: bool = True,
         show: Optional[bool] = None,
         show_k_conjectures: Optional[int] = 20,
     ) -> Graffiti3Result:
@@ -1287,7 +1355,13 @@ class Graffiti3:
         all_sophie: List[SophieCondition] = []
         breakdown: Dict[str, Any] = {}
 
-        for t in targets:
+        _targets = list(targets)
+        for i, t in enumerate(_targets):
+            if verbose and len(_targets) > 1:
+                print(
+                    f"[Graffiti3] ── Target {i+1}/{len(_targets)}: '{t}' ──",
+                    flush=True,
+                )
             res = self._conjecture(
                 t,
                 complexity=complexity,
@@ -1300,6 +1374,7 @@ class Graffiti3:
                 enable_sophie=enable_sophie,
                 sophie_stages=sophie_stages,
                 quick=quick,
+                verbose=verbose,
             )
             all_conjs.extend(res.conjectures)
             all_sophie.extend(res.sophie_conditions)
