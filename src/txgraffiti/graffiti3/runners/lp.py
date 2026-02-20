@@ -321,8 +321,7 @@ def lp_runner(
     filter via |w_j| ≤ max_coef_abs and |b| ≤ max_intercept_abs, dropping any
     affine form that fails this test or collapses to 0·x.
     """
-    if solve_lp_func is None:
-        solve_lp_func = solve_lp_min_slack
+    # solve_lp_func is accepted for API compatibility but ignored.
 
     target_vals = df[target_col].to_numpy(dtype=float)
     feature_items = list(others.items())
@@ -330,8 +329,8 @@ def lp_runner(
 
     # All nonempty subsets up to max_features
     all_subsets: List[List[Tuple[str, Expr]]] = []
-    for k in range(1, min(max_features, m) + 1):
-        for combo in combinations(feature_items, k):
+    for r in range(1, min(max_features, m) + 1):
+        for combo in combinations(feature_items, r):
             all_subsets.append(list(combo))
 
     conjs: List[Conjecture] = []
@@ -349,8 +348,9 @@ def lp_runner(
         for subset in all_subsets:
             feat_names = [name for name, _ in subset]
             feat_exprs = [expr for _, expr in subset]
+            feat_str = ', '.join(feat_names)
 
-            # Build X for this hypothesis + subset
+            # Build feature matrix for this hypothesis + subset
             cols: List[np.ndarray] = []
             valid_subset = True
             for expr in feat_exprs:
@@ -359,34 +359,55 @@ def lp_runner(
                 except Exception:
                     valid_subset = False
                     break
-
-                col = col_full[idx]
-                if not np.isfinite(col).any():
-                    valid_subset = False
-                    break
-                cols.append(col)
+                cols.append(col_full[idx])
 
             if not valid_subset or not cols:
                 continue
 
-            X = np.vstack(cols).T  # shape (n_h, k)
-            if X.shape[0] == 0:
+            X = np.vstack(cols).T   # (n_h, k_feat)
+
+            # Restrict to rows finite in y and all features
+            finite_mask = np.isfinite(y)
+            for col in cols:
+                finite_mask &= np.isfinite(col)
+
+            Xf = X[finite_mask]
+            yf = y[finite_mask]
+            n = len(yf)
+            if n < 2:
                 continue
 
-            # ── Upper bound: y ≤ w·x + b ─────────────────────
-            if direction in ("both", "upper"):
-                try:
-                    w_u, b_u, _ = solve_lp_func(
-                        X,
-                        y,
-                        sense="upper",
-                        coef_bound=coef_bound,
-                    )
-                except Exception:
-                    w_u = None
+            k_feat = Xf.shape[1]
 
-                if w_u is not None:
-                    # Rationalize first, then build a “nice” affine Expr
+            # Column-centre each feature to reduce intercept/slope correlation
+            x_means = Xf.mean(axis=0)   # (k_feat,)
+            Xc = Xf - x_means           # centred feature matrix
+
+            col_sums = Xc.sum(axis=0)   # (k_feat,)
+            ones_n = np.ones(n, dtype=float)
+
+            lp_bounds = [(-coef_bound, coef_bound)] * (k_feat + 1)
+
+            # Upper bound: target <= w*x + b
+            # Minimise sum(w*xi + b)  s.t.  w*xi + b >= yi  for all i
+            # LP: n inequality constraints, n x (k_feat+1) matrix -- fast
+            if direction in ("both", "upper"):
+                c_u = np.append(col_sums, float(n))
+                A_ub_u = np.column_stack([-Xc, -ones_n])
+                b_ub_u = -yf
+
+                res_u = linprog(
+                    c=c_u,
+                    A_ub=A_ub_u,
+                    b_ub=b_ub_u,
+                    bounds=lp_bounds,
+                    method="highs",
+                )
+
+                if res_u.success:
+                    w_u = res_u.x[:k_feat]
+                    b_u = float(res_u.x[k_feat] - w_u @ x_means)  # un-centre
+
                     w_u = _rationalize_coeffs(w_u, max_denom=max_denom)
                     b_u = _rationalize_scalar(b_u, max_denom=max_denom)
 
@@ -404,24 +425,30 @@ def lp_runner(
                         conj = Conjecture(
                             relation=rel,
                             condition=hyp.pred,
-                            name=f"[LP-upper] {target_col} vs {', '.join(feat_names)} under {hyp.name}",
+                            name=f"[LP-upper] {target_col} vs {feat_str} under {hyp.name}",
                         )
                         conj.target_name = target_col
                         conjs.append(conj)
 
-            # ── Lower bound: y ≥ w·x + b ─────────────────────
+            # Lower bound: target >= w*x + b
+            # Maximise sum(w*xi + b)  s.t.  w*xi + b <= yi  for all i
             if direction in ("both", "lower"):
-                try:
-                    w_l, b_l, _ = solve_lp_func(
-                        X,
-                        y,
-                        sense="lower",
-                        coef_bound=coef_bound,
-                    )
-                except Exception:
-                    w_l = None
+                c_l = np.append(-col_sums, -float(n))
+                A_ub_l = np.column_stack([Xc, ones_n])
+                b_ub_l = yf
 
-                if w_l is not None:
+                res_l = linprog(
+                    c=c_l,
+                    A_ub=A_ub_l,
+                    b_ub=b_ub_l,
+                    bounds=lp_bounds,
+                    method="highs",
+                )
+
+                if res_l.success:
+                    w_l = res_l.x[:k_feat]
+                    b_l = float(res_l.x[k_feat] - w_l @ x_means)  # un-centre
+
                     w_l = _rationalize_coeffs(w_l, max_denom=max_denom)
                     b_l = _rationalize_scalar(b_l, max_denom=max_denom)
 
@@ -439,10 +466,9 @@ def lp_runner(
                         conj = Conjecture(
                             relation=rel,
                             condition=hyp.pred,
-                            name=f"[LP-lower] {target_col} vs {', '.join(feat_names)} under {hyp.name}",
+                            name=f"[LP-lower] {target_col} vs {feat_str} under {hyp.name}",
                         )
                         conj.target_name = target_col
-
                         conjs.append(conj)
 
     return conjs
