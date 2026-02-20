@@ -820,769 +820,289 @@ class Graffiti3:
                 return []
             return sophie_runner(conjectures=conjs, g4=self)
 
-        # ── Stage: CONSTANT ────────────────────────────────────────────
-        if Stage.CONSTANT in stages_to_run_set:
+        # ── Execute stages in the order specified by stages_to_run ──────
+        for sn, cur_stage in enumerate(stages_to_run, 1):
             if verbose:
-                _sn = stages_to_run.index(Stage.CONSTANT) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.CONSTANT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+                print(
+                    f"  [{sn}/{len(stages_to_run)}] Running '{cur_stage.value}'..."
+                    f" (+{time.perf_counter() - _t0:.1f}s)",
+                    flush=True,
+                )
             _stage_t0 = time.perf_counter()
-            const_conjs = constant_runner(
-                target_col=target,
-                target_expr=target_expr,
-                hypotheses=self.hypotheses,
-                df=self.df,
-            )
-            const_conjs = _filter_by_touch(self.df, const_conjs, min_touches)
-            const_conjs = heuristic_runner(
-                const_conjs,
+
+            if cur_stage == Stage.CONSTANT:
+                stage_conjs = constant_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.RATIO:
+                stage_conjs = ratio_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.LP1:
+                stage_conjs = lp_single_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    direction="both",
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.LP2:
+                stage_conjs = lp_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_features=2,
+                    max_denom=20,
+                    coef_bound=10.0,
+                    direction="both",
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.LP3:
+                stage_conjs = lp_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_features=3,
+                    max_denom=20,
+                    coef_bound=10.0,
+                    direction="both",
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.LP4:
+                stage_conjs = lp_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_features=4,
+                    max_denom=30,
+                    coef_bound=10.0,
+                    direction="both",
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.POLY_SINGLE:
+                stage_conjs = poly_single_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=20,
+                    max_coef_abs=4.0,
+                )
+                # poly_single_runner already filters internally; no touch filter here
+
+            elif cur_stage == Stage.MIXED:
+                stage_conjs = mixed_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    primaries=self.invariants,
+                    secondaries=self.invariants,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    weight=0.5,
+                )
+                # mixed_runner does not guarantee min_touches; skip extra filter
+
+            elif cur_stage == Stage.SQRT:
+                _sqrt_single = sqrt_single_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_denom=30,
+                    coef_bound=10.0,
+                )
+                _sqrt_quad = quad_sqrt_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_denom=30,
+                    coef_bound=10.0,
+                )
+                stage_conjs = _filter_by_touch(self.df, _sqrt_single + _sqrt_quad, min_touches)
+
+            elif cur_stage == Stage.LOG:
+                _log_single = log_single_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_denom=30,
+                    coef_bound=10.0,
+                    log_epsilon=1e-6,
+                    log_base=2,
+                )
+                _log_quad = quad_log_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    max_denom=30,
+                    coef_bound=10.0,
+                    log_epsilon=1e-6,
+                    log_base=2,
+                )
+                stage_conjs = _filter_by_touch(self.df, _log_single + _log_quad, min_touches)
+
+            elif cur_stage == Stage.SQRT_LOG:
+                stage_conjs = x_sqrt_log_single_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    max_coef_abs=4.0,
+                    max_intercept_abs=8.0,
+                    log_base=None,
+                    log_epsilon=1e-6,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.SQRT_PAIR:
+                stage_conjs = sqrt_pair_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    max_coef_abs=4.0,
+                    max_intercept_abs=8.0,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.GEOM_MEAN:
+                stage_conjs = geom_mean_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    max_coef_abs=4.0,
+                    max_intercept_abs=8.0,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.SQRT_SUM:
+                stage_conjs = sqrt_sum_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    max_coef_abs=4.0,
+                    max_intercept_abs=8.0,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.LOG_SUM:
+                stage_conjs = log_sum_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    max_coef_abs=4.0,
+                    max_intercept_abs=8.0,
+                    log_base=None,
+                    log_epsilon=1e-6,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            elif cur_stage == Stage.EXP_EXPONENT:
+                stage_conjs = exp_exponent_runner(
+                    target_col=target,
+                    target_expr=target_expr,
+                    others=others,
+                    hypotheses=self.hypotheses,
+                    df=self.df,
+                    min_support=8,
+                    max_denom=30,
+                    coef_bound=4.0,
+                    zero_tol=1e-8,
+                    log_base=None,
+                    log_epsilon=1e-6,
+                )
+                stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+
+            else:
+                # Unknown stage — skip gracefully
+                continue
+
+            stage_conjs = heuristic_runner(
+                stage_conjs,
                 df=self.df,
                 morgan_filter=self.morgan_filter,
                 dalmatian_filter=self.dalmatian_filter,
             )
-            const_sophie = _maybe_sophie(Stage.CONSTANT, const_conjs)
+            stage_sophie = _maybe_sophie(cur_stage, stage_conjs)
 
-            all_conjectures.extend(const_conjs)
+            all_conjectures.extend(stage_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
             stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.CONSTANT.value, stage_elapsed)]
+            stage_timings.append((cur_stage.value, stage_elapsed))
             if checkpoint_file:
                 _write_conjecture_checkpoint(
                     checkpoint_file,
                     all_conjectures,
                     target,
-                    Stage.CONSTANT.value,
-                    stage_timings=stage_timings_next,
+                    cur_stage.value,
+                    stage_timings=stage_timings,
                 )
-            all_sophie.extend(const_sophie)
-            stage_info[Stage.CONSTANT.value] = dict(
-                conjectures=len(const_conjs),
-                sophie=len(const_sophie),
+            all_sophie.extend(stage_sophie)
+            stage_info[cur_stage.value] = dict(
+                conjectures=len(stage_conjs),
+                sophie=len(stage_sophie),
                 time_s=stage_elapsed,
             )
-            stage_timings.append((Stage.CONSTANT.value, stage_elapsed))
-
-        # ── Stage: RATIO ───────────────────────────────────────────────
-        if Stage.RATIO in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.RATIO) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.RATIO.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            ratio_conjs = ratio_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-            )
-            ratio_conjs = _filter_by_touch(self.df, ratio_conjs, min_touches)
-            ratio_conjs = heuristic_runner(
-                ratio_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            ratio_sophie = _maybe_sophie(Stage.RATIO, ratio_conjs)
-
-            all_conjectures.extend(ratio_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.RATIO.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.RATIO.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(ratio_sophie)
-            stage_info[Stage.RATIO.value] = dict(
-                conjectures=len(ratio_conjs),
-                sophie=len(ratio_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.RATIO.value, stage_elapsed))
-
-        # ── Stage: LP1 ────────────────────────────────────────────────
-        if Stage.LP1 in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LP1) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP1.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            lp1_conjs = lp_single_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                direction="both",
-            )
-            lp1_conjs = _filter_by_touch(self.df, lp1_conjs, min_touches)
-            lp1_conjs = heuristic_runner(
-                lp1_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            lp1_sophie = _maybe_sophie(Stage.LP1, lp1_conjs)
-
-            all_conjectures.extend(lp1_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LP1.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LP1.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(lp1_sophie)
-            stage_info[Stage.LP1.value] = dict(
-                conjectures=len(lp1_conjs),
-                sophie=len(lp1_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LP1.value, stage_elapsed))
-
-        # ── Stage: SQRT ───────────────────────────────────────────────
-        if Stage.SQRT in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.SQRT) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            # collect from both sqrt runners, then filter + heuristics once
-            sqrt_conjs_single = sqrt_single_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_denom=30,
-                coef_bound=10.0,
-            )
-            sqrt_conjs_quad = quad_sqrt_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_denom=30,
-                coef_bound=10.0,
-            )
-
-            sqrt_conjs = sqrt_conjs_single + sqrt_conjs_quad
-            sqrt_conjs = _filter_by_touch(self.df, sqrt_conjs, min_touches)
-            sqrt_conjs = heuristic_runner(
-                sqrt_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            sqrt_sophie = _maybe_sophie(Stage.SQRT, sqrt_conjs)
-
-            all_conjectures.extend(sqrt_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.SQRT.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.SQRT.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(sqrt_sophie)
-            stage_info[Stage.SQRT.value] = dict(
-                conjectures=len(sqrt_conjs),
-                sophie=len(sqrt_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.SQRT.value, stage_elapsed))
-
-        # ── Stage: LOG ────────────────────────────────────────────────
-        if Stage.LOG in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LOG) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            log_conjs_single = log_single_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_denom=30,
-                coef_bound=10.0,
-                log_epsilon=1e-6,
-                log_base=2,
-            )
-            log_conjs_quad = quad_log_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_denom=30,
-                coef_bound=10.0,
-                log_epsilon=1e-6,
-                log_base=2,
-            )
-
-            log_conjs = log_conjs_single + log_conjs_quad
-            log_conjs = _filter_by_touch(self.df, log_conjs, min_touches)
-            log_conjs = heuristic_runner(
-                log_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            log_sophie = _maybe_sophie(Stage.LOG, log_conjs)
-
-            all_conjectures.extend(log_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LOG.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LOG.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(log_sophie)
-            stage_info[Stage.LOG.value] = dict(
-                conjectures=len(log_conjs),
-                sophie=len(log_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LOG.value, stage_elapsed))
-
-        # ── Stage: SQRT_LOG (x, √x, log x) ───────────────────────────
-        if Stage.SQRT_LOG in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.SQRT_LOG) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            sqrt_log_conjs = x_sqrt_log_single_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                max_coef_abs=4.0,
-                max_intercept_abs=8.0,
-                log_base=None,      # natural log; tweak if you like
-                log_epsilon=1e-6,
-            )
-            sqrt_log_conjs = _filter_by_touch(self.df, sqrt_log_conjs, min_touches)
-            sqrt_log_conjs = heuristic_runner(
-                sqrt_log_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            sqrt_log_sophie = _maybe_sophie(Stage.SQRT_LOG, sqrt_log_conjs)
-
-            all_conjectures.extend(sqrt_log_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.SQRT_LOG.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.SQRT_LOG.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(sqrt_log_sophie)
-            stage_info[Stage.SQRT_LOG.value] = dict(
-                conjectures=len(sqrt_log_conjs),
-                sophie=len(sqrt_log_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.SQRT_LOG.value, stage_elapsed))
-
-        # ── Stage: SQRT_PAIR (√x, √y) ────────────────────────────────
-        if Stage.SQRT_PAIR in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.SQRT_PAIR) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_PAIR.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            sqrt_pair_conjs = sqrt_pair_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                max_coef_abs=4.0,
-                max_intercept_abs=8.0,
-            )
-            sqrt_pair_conjs = _filter_by_touch(self.df, sqrt_pair_conjs, min_touches)
-            sqrt_pair_conjs = heuristic_runner(
-                sqrt_pair_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            sqrt_pair_sophie = _maybe_sophie(Stage.SQRT_PAIR, sqrt_pair_conjs)
-
-            all_conjectures.extend(sqrt_pair_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.SQRT_PAIR.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.SQRT_PAIR.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(sqrt_pair_sophie)
-            stage_info[Stage.SQRT_PAIR.value] = dict(
-                conjectures=len(sqrt_pair_conjs),
-                sophie=len(sqrt_pair_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.SQRT_PAIR.value, stage_elapsed))
-
-        # ── Stage: GEOM_MEAN (x, √(x y)) ─────────────────────────────
-        if Stage.GEOM_MEAN in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.GEOM_MEAN) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.GEOM_MEAN.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            geom_conjs = geom_mean_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                max_coef_abs=4.0,
-                max_intercept_abs=8.0,
-            )
-            geom_conjs = _filter_by_touch(self.df, geom_conjs, min_touches)
-            geom_conjs = heuristic_runner(
-                geom_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            geom_sophie = _maybe_sophie(Stage.GEOM_MEAN, geom_conjs)
-
-            all_conjectures.extend(geom_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.GEOM_MEAN.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.GEOM_MEAN.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(geom_sophie)
-            stage_info[Stage.GEOM_MEAN.value] = dict(
-                conjectures=len(geom_conjs),
-                sophie=len(geom_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.GEOM_MEAN.value, stage_elapsed))
-
-        # ── Stage: SQRT_SUM (x, √(x + y)) ────────────────────────────
-        if Stage.SQRT_SUM in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.SQRT_SUM) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            sqrt_sum_conjs = sqrt_sum_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                max_coef_abs=4.0,
-                max_intercept_abs=8.0,
-            )
-            sqrt_sum_conjs = _filter_by_touch(self.df, sqrt_sum_conjs, min_touches)
-            sqrt_sum_conjs = heuristic_runner(
-                sqrt_sum_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            sqrt_sum_sophie = _maybe_sophie(Stage.SQRT_SUM, sqrt_sum_conjs)
-
-            all_conjectures.extend(sqrt_sum_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.SQRT_SUM.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.SQRT_SUM.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(sqrt_sum_sophie)
-            stage_info[Stage.SQRT_SUM.value] = dict(
-                conjectures=len(sqrt_sum_conjs),
-                sophie=len(sqrt_sum_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.SQRT_SUM.value, stage_elapsed))
-
-        # ── Stage: LOG_SUM (x, log(x + y)) ───────────────────────────
-        if Stage.LOG_SUM in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LOG_SUM) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            log_sum_conjs = log_sum_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                max_coef_abs=4.0,
-                max_intercept_abs=8.0,
-                log_base=None,      # natural log by default
-                log_epsilon=1e-6,
-            )
-            log_sum_conjs = _filter_by_touch(self.df, log_sum_conjs, min_touches)
-            log_sum_conjs = heuristic_runner(
-                log_sum_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            log_sum_sophie = _maybe_sophie(Stage.LOG_SUM, log_sum_conjs)
-
-            all_conjectures.extend(log_sum_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LOG_SUM.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LOG_SUM.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(log_sum_sophie)
-            stage_info[Stage.LOG_SUM.value] = dict(
-                conjectures=len(log_sum_conjs),
-                sophie=len(log_sum_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LOG_SUM.value, stage_elapsed))
-
-        if Stage.EXP_EXPONENT in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.EXP_EXPONENT) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.EXP_EXPONENT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            exp_conjs = exp_exponent_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=30,
-                coef_bound=4.0,
-                zero_tol=1e-8,
-                log_base=None,      # natural log by default
-                log_epsilon=1e-6,
-            )
-            exp_conjs = _filter_by_touch(self.df, exp_conjs, min_touches)
-            exp_conjs = heuristic_runner(
-                exp_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            exp_conjs_sophie = _maybe_sophie(Stage.LOG_SUM, exp_conjs)
-
-            all_conjectures.extend(exp_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.EXP_EXPONENT.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.EXP_EXPONENT.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(exp_conjs_sophie)
-            stage_info[Stage.EXP_EXPONENT.value] = dict(
-                conjectures=len(exp_conjs),
-                sophie=len(exp_conjs_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.EXP_EXPONENT.value, stage_elapsed))
-
-        # NEW RUNNERS ENUMS
-        # SQRT_LOG = "sqrt_log"
-        # SQRT_PAIR = "sqrt_pair"
-        # GEOM_MEAN = "geom_mean"
-        # SQRT_SUM = "sqrt_sum"
-        # LOG_SUM = "log_sum"
-
-        # ── Stage: LP (2 features) ────────────────────────────────────
-        if Stage.LP2 in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LP2) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP2.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            lp_conjs = lp_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_features=2,
-                max_denom=20,
-                coef_bound=10.0,
-                direction="both",
-            )
-            lp_conjs = _filter_by_touch(self.df, lp_conjs, min_touches)
-            lp_conjs = heuristic_runner(
-                lp_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            lp_sophie = _maybe_sophie(Stage.LP2, lp_conjs)
-
-            all_conjectures.extend(lp_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LP2.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LP2.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(lp_sophie)
-            stage_info[Stage.LP2.value] = dict(
-                conjectures=len(lp_conjs),
-                sophie=len(lp_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LP2.value, stage_elapsed))
-
-        # ── Stage: LP3 (3 features) ───────────────────────────────────
-        if Stage.LP3 in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LP3) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP3.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            lp3_conjs = lp_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_features=3,
-                max_denom=20,
-                coef_bound=10.0,
-                direction="both",
-            )
-            lp3_conjs = _filter_by_touch(self.df, lp3_conjs, min_touches)
-            lp3_conjs = heuristic_runner(
-                lp3_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            lp3_sophie = _maybe_sophie(Stage.LP3, lp3_conjs)
-
-            all_conjectures.extend(lp3_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LP3.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LP3.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(lp3_sophie)
-            stage_info[Stage.LP3.value] = dict(
-                conjectures=len(lp3_conjs),
-                sophie=len(lp3_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LP3.value, stage_elapsed))
-
-        # ── Stage: LP4 (4 features) ───────────────────────────────────
-        if Stage.LP4 in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.LP4) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP4.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            lp4_conjs = lp_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                max_features=4,
-                max_denom=30,
-                coef_bound=10.0,
-                direction="both",
-            )
-            lp4_conjs = _filter_by_touch(self.df, lp4_conjs, min_touches)
-            lp4_conjs = heuristic_runner(
-                lp4_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            lp4_sophie = _maybe_sophie(Stage.LP4, lp4_conjs)
-
-            all_conjectures.extend(lp4_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.LP4.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.LP4.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(lp4_sophie)
-            stage_info[Stage.LP4.value] = dict(
-                conjectures=len(lp4_conjs),
-                sophie=len(lp4_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.LP4.value, stage_elapsed))
-
-        # ── Stage: POLY_SINGLE ────────────────────────────────────────
-        if Stage.POLY_SINGLE in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.POLY_SINGLE) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.POLY_SINGLE.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            poly_conjs = poly_single_runner(
-                target_col=target,
-                target_expr=target_expr,
-                others=others,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                min_support=8,
-                max_denom=20,
-                max_coef_abs=4.0,
-            )
-            poly_conjs = heuristic_runner(
-                poly_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            poly_sophie = _maybe_sophie(Stage.POLY_SINGLE, poly_conjs)
-
-            all_conjectures.extend(poly_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.POLY_SINGLE.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.POLY_SINGLE.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(poly_sophie)
-            stage_info[Stage.POLY_SINGLE.value] = dict(
-                conjectures=len(poly_conjs),
-                sophie=len(poly_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.POLY_SINGLE.value, stage_elapsed))
-
-        # ── Stage: MIXED ──────────────────────────────────────────────
-        if Stage.MIXED in stages_to_run_set:
-            if verbose:
-                _sn = stages_to_run.index(Stage.MIXED) + 1
-                print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.MIXED.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
-            _stage_t0 = time.perf_counter()
-            mixed_conjs = mixed_runner(
-                target_col=target,
-                target_expr=target_expr,
-                primaries=self.invariants,
-                secondaries=self.invariants,
-                hypotheses=self.hypotheses,
-                df=self.df,
-                weight=0.5,
-            )
-            mixed_conjs = heuristic_runner(
-                mixed_conjs,
-                df=self.df,
-                morgan_filter=self.morgan_filter,
-                dalmatian_filter=self.dalmatian_filter,
-            )
-            mixed_sophie = _maybe_sophie(Stage.MIXED, mixed_conjs)
-
-            all_conjectures.extend(mixed_conjs)
-            all_conjectures = _dedup_conjectures(all_conjectures)
-            stage_elapsed = time.perf_counter() - _stage_t0
-            stage_timings_next = stage_timings + [(Stage.MIXED.value, stage_elapsed)]
-            if checkpoint_file:
-                _write_conjecture_checkpoint(
-                    checkpoint_file,
-                    all_conjectures,
-                    target,
-                    Stage.MIXED.value,
-                    stage_timings=stage_timings_next,
-                )
-            all_sophie.extend(mixed_sophie)
-            stage_info[Stage.MIXED.value] = dict(
-                conjectures=len(mixed_conjs),
-                sophie=len(mixed_sophie),
-                time_s=stage_elapsed,
-            )
-            stage_timings.append((Stage.MIXED.value, stage_elapsed))
 
         # ── Final pass: annotate & sort ───────────────────────────────
         all_conjectures = _annotate_and_sort_conjectures(self.df, all_conjectures)
