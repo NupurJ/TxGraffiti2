@@ -131,7 +131,7 @@ def _write_conjecture_checkpoint(
 
     csv_buf = io.StringIO()
     writer = csv.writer(csv_buf, quoting=csv.QUOTE_ALL)
-    writer.writerow(["n", "conjecture", "touches", "support"])
+    writer.writerow(["n", "stage", "conjecture", "touches", "support"])
     for i, c in enumerate(conjectures, 1):
         try:
             text = c.pretty()
@@ -139,7 +139,8 @@ def _write_conjecture_checkpoint(
             text = repr(c)
         touches = getattr(c, "touch_count", getattr(c, "touch", ""))
         support = getattr(c, "support_n", getattr(c, "support", ""))
-        writer.writerow([i, text, touches, support])
+        conj_stage = getattr(c, "_checkpoint_stage", "")
+        writer.writerow([i, conj_stage, text, touches, support])
 
     content = "\n".join(header_lines) + csv_buf.getvalue()
 
