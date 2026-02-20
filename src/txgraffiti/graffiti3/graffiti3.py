@@ -97,28 +97,51 @@ def _write_conjecture_checkpoint(
     conjectures: "List[Any]",
     target: str,
     stage: str = "",
+    stage_timings: Optional[Sequence[Tuple[str, float]]] = None,
 ) -> None:
     """
     Atomically overwrite *path* with the current conjecture pool.
+
+    Format
+    ------
+    Top block   : comment lines (# ...) with metadata and stage timings.
+    Middle block: CSV rows with columns: n,conjecture,touches,support
+    Bottom block: summary line appended later by _append_checkpoint_summary.
+
     Uses a .tmp sibling file + rename so readers never see a partial write.
     """
+    import csv
+    import io
     import os
     import tempfile
     from datetime import datetime
 
-    lines: List[str] = []
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     stage_tag = f" | after stage '{stage}'" if stage else ""
-    lines.append(f"# Checkpoint: target='{target}'{stage_tag}")
-    lines.append(f"# Written: {ts}")
-    lines.append(f"# Conjectures: {len(conjectures)}")
-    lines.append("")
+
+    header_lines: List[str] = []
+    header_lines.append(f"# Checkpoint: target='{target}'{stage_tag}")
+    header_lines.append(f"# Written: {ts}")
+    header_lines.append(f"# Conjectures: {len(conjectures)}")
+    if stage_timings:
+        header_lines.append("# Stages run (order, seconds):")
+        for i, (name, seconds) in enumerate(stage_timings, 1):
+            header_lines.append(f"#   {i}. {name}: {seconds:.2f}s")
+    header_lines.append("")
+
+    csv_buf = io.StringIO()
+    writer = csv.writer(csv_buf, quoting=csv.QUOTE_ALL)
+    writer.writerow(["n", "conjecture", "touches", "support"])
     for i, c in enumerate(conjectures, 1):
         try:
-            lines.append(f"{i}. {c.pretty()}")
+            text = c.pretty()
         except Exception:
-            lines.append(f"{i}. {repr(c)}")
-    content = "\n".join(lines) + "\n"
+            text = repr(c)
+        touches = getattr(c, "touch_count", getattr(c, "touch", ""))
+        support = getattr(c, "support_n", getattr(c, "support", ""))
+        writer.writerow([i, text, touches, support])
+
+    content = "\n".join(header_lines) + csv_buf.getvalue()
 
     dir_ = os.path.dirname(os.path.abspath(path)) or "."
     try:
@@ -126,6 +149,20 @@ def _write_conjecture_checkpoint(
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(content)
         os.replace(tmp_path, path)
+    except Exception:
+        # Never crash the main pipeline over a checkpoint write
+        pass
+
+
+def _append_checkpoint_summary(path: str, summary: str) -> None:
+    """Append a summary block to the end of an existing checkpoint file."""
+    if not summary:
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write("\n")
+            fh.write("# Summary\n")
+            fh.write(summary.strip() + "\n")
     except Exception:
         # Never crash the main pipeline over a checkpoint write
         pass
@@ -774,6 +811,7 @@ class Graffiti3:
         all_conjectures: List[Conjecture] = []
         all_sophie: List[SophieCondition] = []
         stage_info: Dict[str, Any] = {}
+        stage_timings: List[Tuple[str, float]] = []
 
         def _maybe_sophie(stage: Stage, conjs: List[Conjecture]) -> List[SophieCondition]:
             if not enable_sophie or not conjs:
@@ -787,6 +825,7 @@ class Graffiti3:
             if verbose:
                 _sn = stages_to_run.index(Stage.CONSTANT) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.CONSTANT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             const_conjs = constant_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -804,20 +843,30 @@ class Graffiti3:
 
             all_conjectures.extend(const_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.CONSTANT.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.CONSTANT.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.CONSTANT.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(const_sophie)
-
             stage_info[Stage.CONSTANT.value] = dict(
                 conjectures=len(const_conjs),
                 sophie=len(const_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.CONSTANT.value, stage_elapsed))
 
         # ── Stage: RATIO ───────────────────────────────────────────────
         if Stage.RATIO in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.RATIO) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.RATIO.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             ratio_conjs = ratio_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -836,20 +885,30 @@ class Graffiti3:
 
             all_conjectures.extend(ratio_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.RATIO.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.RATIO.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.RATIO.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(ratio_sophie)
-
             stage_info[Stage.RATIO.value] = dict(
                 conjectures=len(ratio_conjs),
                 sophie=len(ratio_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.RATIO.value, stage_elapsed))
 
         # ── Stage: LP1 ────────────────────────────────────────────────
         if Stage.LP1 in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.LP1) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP1.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             lp1_conjs = lp_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -869,20 +928,30 @@ class Graffiti3:
 
             all_conjectures.extend(lp1_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LP1.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP1.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LP1.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(lp1_sophie)
-
             stage_info[Stage.LP1.value] = dict(
                 conjectures=len(lp1_conjs),
                 sophie=len(lp1_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LP1.value, stage_elapsed))
 
         # ── Stage: SQRT ───────────────────────────────────────────────
         if Stage.SQRT in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.SQRT) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             # collect from both sqrt runners, then filter + heuristics once
             sqrt_conjs_single = sqrt_single_runner(
                 target_col=target,
@@ -915,20 +984,30 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.SQRT.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.SQRT.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(sqrt_sophie)
-
             stage_info[Stage.SQRT.value] = dict(
                 conjectures=len(sqrt_conjs),
                 sophie=len(sqrt_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.SQRT.value, stage_elapsed))
 
         # ── Stage: LOG ────────────────────────────────────────────────
         if Stage.LOG in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.LOG) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             log_conjs_single = log_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -964,20 +1043,30 @@ class Graffiti3:
 
             all_conjectures.extend(log_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LOG.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LOG.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LOG.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(log_sophie)
-
             stage_info[Stage.LOG.value] = dict(
                 conjectures=len(log_conjs),
                 sophie=len(log_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LOG.value, stage_elapsed))
 
         # ── Stage: SQRT_LOG (x, √x, log x) ───────────────────────────
         if Stage.SQRT_LOG in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.SQRT_LOG) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_LOG.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             sqrt_log_conjs = x_sqrt_log_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1004,20 +1093,30 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_log_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.SQRT_LOG.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_LOG.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.SQRT_LOG.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(sqrt_log_sophie)
-
             stage_info[Stage.SQRT_LOG.value] = dict(
                 conjectures=len(sqrt_log_conjs),
                 sophie=len(sqrt_log_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.SQRT_LOG.value, stage_elapsed))
 
         # ── Stage: SQRT_PAIR (√x, √y) ────────────────────────────────
         if Stage.SQRT_PAIR in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.SQRT_PAIR) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_PAIR.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             sqrt_pair_conjs = sqrt_pair_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1042,20 +1141,30 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_pair_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.SQRT_PAIR.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_PAIR.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.SQRT_PAIR.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(sqrt_pair_sophie)
-
             stage_info[Stage.SQRT_PAIR.value] = dict(
                 conjectures=len(sqrt_pair_conjs),
                 sophie=len(sqrt_pair_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.SQRT_PAIR.value, stage_elapsed))
 
         # ── Stage: GEOM_MEAN (x, √(x y)) ─────────────────────────────
         if Stage.GEOM_MEAN in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.GEOM_MEAN) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.GEOM_MEAN.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             geom_conjs = geom_mean_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1080,20 +1189,30 @@ class Graffiti3:
 
             all_conjectures.extend(geom_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.GEOM_MEAN.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.GEOM_MEAN.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.GEOM_MEAN.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(geom_sophie)
-
             stage_info[Stage.GEOM_MEAN.value] = dict(
                 conjectures=len(geom_conjs),
                 sophie=len(geom_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.GEOM_MEAN.value, stage_elapsed))
 
         # ── Stage: SQRT_SUM (x, √(x + y)) ────────────────────────────
         if Stage.SQRT_SUM in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.SQRT_SUM) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.SQRT_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             sqrt_sum_conjs = sqrt_sum_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1118,20 +1237,30 @@ class Graffiti3:
 
             all_conjectures.extend(sqrt_sum_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.SQRT_SUM.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.SQRT_SUM.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.SQRT_SUM.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(sqrt_sum_sophie)
-
             stage_info[Stage.SQRT_SUM.value] = dict(
                 conjectures=len(sqrt_sum_conjs),
                 sophie=len(sqrt_sum_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.SQRT_SUM.value, stage_elapsed))
 
         # ── Stage: LOG_SUM (x, log(x + y)) ───────────────────────────
         if Stage.LOG_SUM in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.LOG_SUM) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LOG_SUM.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             log_sum_conjs = log_sum_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1158,19 +1287,29 @@ class Graffiti3:
 
             all_conjectures.extend(log_sum_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LOG_SUM.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LOG_SUM.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LOG_SUM.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(log_sum_sophie)
-
             stage_info[Stage.LOG_SUM.value] = dict(
                 conjectures=len(log_sum_conjs),
                 sophie=len(log_sum_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LOG_SUM.value, stage_elapsed))
 
         if Stage.EXP_EXPONENT in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.EXP_EXPONENT) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.EXP_EXPONENT.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             exp_conjs = exp_exponent_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1195,14 +1334,23 @@ class Graffiti3:
 
             all_conjectures.extend(exp_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.EXP_EXPONENT.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.EXP_EXPONENT.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.EXP_EXPONENT.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(exp_conjs_sophie)
-
             stage_info[Stage.EXP_EXPONENT.value] = dict(
                 conjectures=len(exp_conjs),
                 sophie=len(exp_conjs_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.EXP_EXPONENT.value, stage_elapsed))
 
         # NEW RUNNERS ENUMS
         # SQRT_LOG = "sqrt_log"
@@ -1216,6 +1364,7 @@ class Graffiti3:
             if verbose:
                 _sn = stages_to_run.index(Stage.LP2) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP2.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             lp_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1238,20 +1387,30 @@ class Graffiti3:
 
             all_conjectures.extend(lp_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LP2.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP2.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LP2.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(lp_sophie)
-
             stage_info[Stage.LP2.value] = dict(
                 conjectures=len(lp_conjs),
                 sophie=len(lp_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LP2.value, stage_elapsed))
 
         # ── Stage: LP3 (3 features) ───────────────────────────────────
         if Stage.LP3 in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.LP3) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP3.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             lp3_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1274,20 +1433,30 @@ class Graffiti3:
 
             all_conjectures.extend(lp3_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LP3.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP3.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LP3.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(lp3_sophie)
-
             stage_info[Stage.LP3.value] = dict(
                 conjectures=len(lp3_conjs),
                 sophie=len(lp3_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LP3.value, stage_elapsed))
 
         # ── Stage: LP4 (4 features) ───────────────────────────────────
         if Stage.LP4 in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.LP4) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.LP4.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             lp4_conjs = lp_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1310,20 +1479,30 @@ class Graffiti3:
 
             all_conjectures.extend(lp4_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.LP4.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.LP4.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.LP4.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(lp4_sophie)
-
             stage_info[Stage.LP4.value] = dict(
                 conjectures=len(lp4_conjs),
                 sophie=len(lp4_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.LP4.value, stage_elapsed))
 
         # ── Stage: POLY_SINGLE ────────────────────────────────────────
         if Stage.POLY_SINGLE in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.POLY_SINGLE) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.POLY_SINGLE.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             poly_conjs = poly_single_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1344,20 +1523,30 @@ class Graffiti3:
 
             all_conjectures.extend(poly_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.POLY_SINGLE.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.POLY_SINGLE.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.POLY_SINGLE.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(poly_sophie)
-
             stage_info[Stage.POLY_SINGLE.value] = dict(
                 conjectures=len(poly_conjs),
                 sophie=len(poly_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.POLY_SINGLE.value, stage_elapsed))
 
         # ── Stage: MIXED ──────────────────────────────────────────────
         if Stage.MIXED in stages_to_run_set:
             if verbose:
                 _sn = stages_to_run.index(Stage.MIXED) + 1
                 print(f"  [{_sn}/{len(stages_to_run)}] Running '{Stage.MIXED.value}'... (+{time.perf_counter() - _t0:.1f}s)", flush=True)
+            _stage_t0 = time.perf_counter()
             mixed_conjs = mixed_runner(
                 target_col=target,
                 target_expr=target_expr,
@@ -1377,14 +1566,23 @@ class Graffiti3:
 
             all_conjectures.extend(mixed_conjs)
             all_conjectures = _dedup_conjectures(all_conjectures)
+            stage_elapsed = time.perf_counter() - _stage_t0
+            stage_timings_next = stage_timings + [(Stage.MIXED.value, stage_elapsed)]
             if checkpoint_file:
-                _write_conjecture_checkpoint(checkpoint_file, all_conjectures, target, Stage.MIXED.value)
+                _write_conjecture_checkpoint(
+                    checkpoint_file,
+                    all_conjectures,
+                    target,
+                    Stage.MIXED.value,
+                    stage_timings=stage_timings_next,
+                )
             all_sophie.extend(mixed_sophie)
-
             stage_info[Stage.MIXED.value] = dict(
                 conjectures=len(mixed_conjs),
                 sophie=len(mixed_sophie),
+                time_s=stage_elapsed,
             )
+            stage_timings.append((Stage.MIXED.value, stage_elapsed))
 
         # ── Final pass: annotate & sort ───────────────────────────────
         all_conjectures = _annotate_and_sort_conjectures(self.df, all_conjectures)
@@ -1397,14 +1595,16 @@ class Graffiti3:
         else:
             all_sophie_ranked = []
 
+        summary_line = (
+            f"[Graffiti3] Done. "
+            f"{len(all_conjectures)} conjecture(s), "
+            f"{len(all_sophie_ranked)} sophie condition(s). "
+            f"(total: {time.perf_counter() - _t0:.1f}s)"
+        )
         if verbose:
-            print(
-                f"[Graffiti3] Done. "
-                f"{len(all_conjectures)} conjecture(s), "
-                f"{len(all_sophie_ranked)} sophie condition(s). "
-                f"(total: {time.perf_counter() - _t0:.1f}s)",
-                flush=True,
-            )
+            print(summary_line, flush=True)
+        if checkpoint_file:
+            _append_checkpoint_summary(checkpoint_file, summary_line)
 
         return Graffiti3Result(
             target=target,
