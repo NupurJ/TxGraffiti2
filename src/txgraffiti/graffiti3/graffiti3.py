@@ -174,6 +174,223 @@ def _append_checkpoint_summary(path: str, summary: str) -> None:
         pass
 
 
+# ──────────────────── checkpoint reader ──────────────────────────── #
+
+class CheckpointConjecture:
+    """
+    Lightweight stand-in for a :class:`~txgraffiti.graffiti3.relations.Conjecture`
+    read back from a checkpoint CSV file.
+
+    It preserves the conjecture text together with the ``touch_count``,
+    ``support_n``, and ``stage`` metadata stored in the file.  The object
+    behaves like a real ``Conjecture`` for display, sorting, and
+    deduplication purposes (``pretty()``, ``signature()``).
+
+    Attributes
+    ----------
+    text : str
+        The conjecture as a human-readable string (the value returned by
+        ``Conjecture.pretty()`` at write time).
+    touch_count : int
+        Number of tight / touching rows recorded in the checkpoint.
+    touch : int
+        Alias for ``touch_count`` (backward compatibility).
+    support_n : int
+        Size of the applicable hypothesis class recorded in the checkpoint.
+    support : int
+        Alias for ``support_n`` (backward compatibility).
+    stage : str
+        The pipeline stage that produced this conjecture (e.g. ``'lp1'``,
+        ``'ratio'``, ``'lp2 (partial)'``).
+    """
+
+    __slots__ = (
+        "text",
+        "touch_count",
+        "support_n",
+        "stage",
+        "_checkpoint_stage",
+    )
+
+    def __init__(
+        self,
+        text: str,
+        *,
+        touch_count: int = 0,
+        support_n: int = 0,
+        stage: str = "",
+    ) -> None:
+        self.text: str = text
+        self.touch_count: int = int(touch_count)
+        self.support_n: int = int(support_n)
+        self.stage: str = stage
+        self._checkpoint_stage: str = stage
+
+    # ──── Conjecture-compatible interface ────
+
+    def pretty(self) -> str:  # noqa: D401
+        """Return the conjecture string as read from the checkpoint."""
+        return self.text
+
+    def signature(self) -> str:
+        """Canonical signature used for deduplication (mirrors the text)."""
+        return self.text
+
+    # ──── backward-compat aliases ────
+
+    @property
+    def touch(self) -> int:  # noqa: D401
+        return self.touch_count
+
+    @property
+    def support(self) -> int:  # noqa: D401
+        return self.support_n
+
+    def __repr__(self) -> str:
+        return (
+            f"CheckpointConjecture({self.text!r}, "
+            f"touches={self.touch_count}, support={self.support_n}, "
+            f"stage={self.stage!r})"
+        )
+
+
+def read_conjecture_checkpoint(
+    path: str,
+) -> Tuple[List["CheckpointConjecture"], Dict[str, Any]]:
+    """
+    Read a Graffiti3 checkpoint CSV file and return the conjectures together
+    with any metadata parsed from the comment header.
+
+    The checkpoint format written by :func:`_write_conjecture_checkpoint` is::
+
+        # Checkpoint: target='...' | after stage '...'
+        # Written: YYYY-MM-DD HH:MM:SS
+        # Conjectures: N
+        # Stages run (order, seconds):
+        #   1. constant: 0.01s
+        #   ...
+        <blank line>
+        "n","stage","conjecture","touches","support"
+        "1","ratio","alpha ≤ 3","42","100"
+        ...
+        # Summary
+        [Graffiti3] Done.
+        ...
+
+    All ``#``-prefixed lines are treated as comments and are not fed to the
+    CSV parser.  The CSV body must contain columns ``conjecture``,
+    ``touches``, and ``support`` (``stage`` and ``n`` are optional).
+
+    Parameters
+    ----------
+    path : str
+        Path to the checkpoint ``*.csv`` file.
+
+    Returns
+    -------
+    conjectures : list of CheckpointConjecture
+        One entry per data row, in file order (i.e. descending touch count
+        as sorted when the checkpoint was written).
+    meta : dict
+        Metadata from the comment header.  Keys present when parseable:
+        ``'target'``, ``'stage'``, ``'written'``, ``'n_conjectures'``,
+        ``'stage_timings'`` (list of ``(name, seconds)`` tuples).
+    """
+    import csv as _csv
+    import io as _io
+    import re as _re
+
+    meta: Dict[str, Any] = {"stage_timings": []}
+    csv_lines: List[str] = []
+    in_summary = False
+
+    with open(path, encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.rstrip("\n")
+
+            if line.startswith("#"):
+                stripped = line.lstrip("# ").strip()
+
+                # ── header metadata ──────────────────────────────────
+                if line.startswith("# Checkpoint:"):
+                    rest = line[len("# Checkpoint:"):].strip()
+                    # target='...' | after stage '...'
+                    m = _re.search(r"target='([^']*)'", rest)
+                    if m:
+                        meta["target"] = m.group(1)
+                    m = _re.search(r"after stage '([^']*)'", rest)
+                    if m:
+                        meta["stage"] = m.group(1)
+
+                elif line.startswith("# Written:"):
+                    meta["written"] = line[len("# Written:"):].strip()
+
+                elif line.startswith("# Conjectures:"):
+                    try:
+                        meta["n_conjectures"] = int(
+                            line[len("# Conjectures:"):].strip()
+                        )
+                    except ValueError:
+                        pass
+
+                elif _re.match(r"#\s+\d+\.", line):
+                    # Stage timing:  #   N. stage_name: S.SSs
+                    m = _re.match(
+                        r"#\s+\d+\.\s+(.+?):\s+([\d.]+)s\s*$", line
+                    )
+                    if m:
+                        meta["stage_timings"].append(
+                            (m.group(1).strip(), float(m.group(2)))
+                        )
+
+                elif stripped == "Summary":
+                    in_summary = True
+
+                elif in_summary:
+                    # Collect summary lines into meta
+                    meta.setdefault("summary_lines", []).append(stripped)
+
+                # all other comment lines are silently skipped
+
+            else:
+                # Non-comment line: belongs to the CSV body
+                csv_lines.append(line)
+
+    if not csv_lines:
+        return [], meta
+
+    reader = _csv.DictReader(_io.StringIO("\n".join(csv_lines)))
+
+    conjectures: List[CheckpointConjecture] = []
+    for row in reader:
+        text = (row.get("conjecture") or "").strip()
+        if not text:
+            continue
+
+        try:
+            touches = int(row.get("touches") or 0)
+        except (ValueError, TypeError):
+            touches = 0
+
+        try:
+            support = int(row.get("support") or 0)
+        except (ValueError, TypeError):
+            support = 0
+
+        stage = (row.get("stage") or "").strip()
+
+        conjectures.append(
+            CheckpointConjecture(
+                text=text,
+                touch_count=touches,
+                support_n=support,
+                stage=stage,
+            )
+        )
+
+    return conjectures, meta
+
+
 # ───────────────────────── main workspace ───────────────────────── #
 
 class Graffiti3:
