@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -29,6 +29,7 @@ def ratio_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_denom: int = 20,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Stage-1 generator: for each hypothesis h and each 'other' invariant x,
@@ -52,7 +53,7 @@ def ratio_runner(
 
     normalize to the *same* Expr and dedup works correctly.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     target_vals = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:

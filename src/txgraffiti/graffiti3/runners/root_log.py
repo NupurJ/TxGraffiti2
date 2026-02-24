@@ -144,6 +144,7 @@ def sqrt_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Square-root two-invariant bounds:
@@ -158,7 +159,7 @@ def sqrt_single_runner(
     that previously gave conjectures like
         p6 ≥ (35/9)·temperature(p6) + (13/15)·√temperature(p6).
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
 
     t_all = df[target_col].to_numpy(dtype=float)
@@ -301,6 +302,7 @@ def log_single_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Logarithmic two-invariant bounds:
@@ -318,7 +320,7 @@ def log_single_runner(
         Clamp argument to at least `log_epsilon` before applying log, so
         you can avoid -inf from small/zero values if you wish.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     if _solve_lp_lower is None or _solve_lp_upper is None:
         return conjs
@@ -479,6 +481,7 @@ def quad_sqrt_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Quadratic + sqrt two-invariant bounds:
@@ -494,7 +497,7 @@ def quad_sqrt_runner(
 
     which can capture mixed “curvature + spread” behavior.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     t_all = df[target_col].to_numpy(dtype=float)
 
@@ -632,6 +635,7 @@ def quad_log_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Quadratic + log two-invariant bounds:
@@ -644,7 +648,7 @@ def quad_log_runner(
     Special case x = y yields bounds of the form
         t ≥ a x² + b log(x) + c.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     t_all = df[target_col].to_numpy(dtype=float)
 

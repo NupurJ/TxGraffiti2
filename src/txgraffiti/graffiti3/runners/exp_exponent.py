@@ -115,6 +115,7 @@ def exp_exponent_runner(
     direction: str = "both",          # "upper", "lower", or "both"
     log_base: float | None = None,    # base for log(beta); None = natural log
     log_epsilon: float = 1e-9,        # clamp arg ≥ log_epsilon before log
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Exponent-type bounds via log-space LP.
@@ -185,7 +186,7 @@ def exp_exponent_runner(
     list[Conjecture]
         Exponent-type conjectures for all hypotheses and (base, chi) pairs.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     # If SciPy / LP is unavailable, the imported helpers will simply return None.
     if _solve_lp_lower is None or _solve_lp_upper is None:

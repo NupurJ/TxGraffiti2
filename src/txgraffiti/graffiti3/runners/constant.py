@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -18,6 +18,7 @@ def constant_runner(
     target_expr: Expr,
     hypotheses: Sequence[HypothesisInfo],
     df: pd.DataFrame,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Stage-0 generator: for each hypothesis h, produce constant bounds
@@ -27,7 +28,7 @@ def constant_runner(
 
     where c_min, c_max are taken over rows satisfying h & base.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     vals = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:

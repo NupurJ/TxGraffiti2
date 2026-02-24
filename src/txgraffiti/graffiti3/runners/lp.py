@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Sequence, List, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Sequence, List, Tuple, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ def lp_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     LP stage: for each hypothesis h and each single 'other' invariant x, solve
@@ -49,7 +50,7 @@ def lp_single_runner(
 
     which the pure ratio stage (no intercept) cannot see.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     y_all = df[target_col].to_numpy(dtype=float)
 
@@ -307,6 +308,7 @@ def lp_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 2.5,
     max_intercept_abs: float = 2.5,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Linear-programming-based affine bounds:
@@ -333,7 +335,7 @@ def lp_runner(
         for combo in combinations(feature_items, r):
             all_subsets.append(list(combo))
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     for hyp in hypotheses:
         H = np.asarray(hyp.mask, dtype=bool)

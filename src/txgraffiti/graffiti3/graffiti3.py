@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import signal
 from enum import Enum
 import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -91,6 +92,10 @@ ModeLike = Union[Mode, str]
 
 
 # ─────────────────── checkpoint helper ──────────────────────────── #
+
+class _StageTimeout(Exception):
+    """Raised by the SIGALRM handler when a stage exceeds its time budget."""
+
 
 def _write_conjecture_checkpoint(
     path: str,
@@ -668,6 +673,294 @@ class Graffiti3:
 
         return filtered
 
+    # ──────────────────────── stage runner ────────────────────────
+
+    def _run_stage_runner(
+        self,
+        cur_stage: Stage,
+        target: str,
+        target_expr: "Expr",
+        others: Dict[str, "Expr"],
+        min_touches: int,
+        _collector: Optional[List[Conjecture]] = None,
+    ) -> Optional[List[Conjecture]]:
+        """
+        Run the appropriate conjecture-generating runner for *cur_stage* and
+        return the resulting (touch-filtered) list of Conjecture objects.
+
+        Returns ``None`` for unknown stages so the caller can ``continue``
+        the stage loop cleanly.
+
+        _collector : list, optional
+            If provided, used as the runners' accumulator so that partial
+            results are recoverable if a ``_StageTimeout`` fires mid-runner.
+        """
+        _acc: List[Conjecture] = _collector if _collector is not None else []
+        if cur_stage == Stage.CONSTANT:
+            constant_runner(
+                target_col=target,
+                target_expr=target_expr,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.RATIO:
+            ratio_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LP1:
+            lp_single_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                direction="both",
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LP2:
+            lp_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_features=2,
+                max_denom=20,
+                coef_bound=10.0,
+                direction="both",
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LP3:
+            lp_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_features=3,
+                max_denom=20,
+                coef_bound=10.0,
+                direction="both",
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LP4:
+            lp_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_features=4,
+                max_denom=30,
+                coef_bound=10.0,
+                direction="both",
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.POLY_SINGLE:
+            # poly_single_runner already filters internally
+            return poly_single_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=20,
+                max_coef_abs=4.0,
+                _collector=_acc,
+            )
+
+        elif cur_stage == Stage.MIXED:
+            # mixed_runner does not guarantee min_touches; skip extra filter
+            return mixed_runner(
+                target_col=target,
+                target_expr=target_expr,
+                primaries=self.invariants,
+                secondaries=self.invariants,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                weight=0.5,
+                _collector=_acc,
+            )
+
+        elif cur_stage == Stage.SQRT:
+            sqrt_single_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_denom=30,
+                coef_bound=10.0,
+                _collector=_acc,
+            )
+            quad_sqrt_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_denom=30,
+                coef_bound=10.0,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LOG:
+            log_single_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_denom=30,
+                coef_bound=10.0,
+                log_epsilon=1e-6,
+                log_base=2,
+                _collector=_acc,
+            )
+            quad_log_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                max_denom=30,
+                coef_bound=10.0,
+                log_epsilon=1e-6,
+                log_base=2,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.SQRT_LOG:
+            x_sqrt_log_single_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                max_coef_abs=4.0,
+                max_intercept_abs=8.0,
+                log_base=None,
+                log_epsilon=1e-6,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.SQRT_PAIR:
+            sqrt_pair_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                max_coef_abs=4.0,
+                max_intercept_abs=8.0,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.GEOM_MEAN:
+            geom_mean_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                max_coef_abs=4.0,
+                max_intercept_abs=8.0,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.SQRT_SUM:
+            sqrt_sum_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                max_coef_abs=4.0,
+                max_intercept_abs=8.0,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.LOG_SUM:
+            log_sum_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                max_coef_abs=4.0,
+                max_intercept_abs=8.0,
+                log_base=None,
+                log_epsilon=1e-6,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        elif cur_stage == Stage.EXP_EXPONENT:
+            exp_exponent_runner(
+                target_col=target,
+                target_expr=target_expr,
+                others=others,
+                hypotheses=self.hypotheses,
+                df=self.df,
+                min_support=8,
+                max_denom=30,
+                coef_bound=4.0,
+                zero_tol=1e-8,
+                log_base=None,
+                log_epsilon=1e-6,
+                _collector=_acc,
+            )
+            return _filter_by_touch(self.df, _acc, min_touches)
+
+        else:
+            # Unknown stage — signal the caller to skip
+            return None
+
     # ──────────────────────── public API ────────────────────────
 
     def _conjecture(
@@ -686,6 +979,7 @@ class Graffiti3:
         quick: Optional[bool] = None,
         verbose: bool = True,
         checkpoint_file: Optional[str] = None,
+        stage_timeout: Optional[float] = None,
     ) -> Graffiti3Result:
         """
         Main conjecturing driver for a single target.
@@ -715,6 +1009,15 @@ class Graffiti3:
         quick : bool, optional
             If True, run a cheap correlation-based prefilter over the `others` pool
             before expensive LP/poly/mixed stages. If None, inferred from `mode`.
+        stage_timeout : float, optional
+            Maximum number of seconds to allow each stage's runner to run.
+            Implemented via ``SIGALRM`` / ``setitimer`` (Linux/macOS only;
+            must be called from the main thread).  When a stage exceeds the
+            budget the runner is genuinely interrupted and the pipeline
+            continues immediately with an empty conjecture list for that
+            stage; all conjectures from completed stages are still processed
+            and written to the checkpoint file as usual.  ``None`` (default)
+            means no timeout is applied.
 
         Returns
         -------
@@ -778,11 +1081,14 @@ class Graffiti3:
         min_touches = self.min_touches
         _t0 = time.perf_counter()
 
+        if stage_timeout is not None and stage_timeout <= 0:
+            raise ValueError("stage_timeout must be a positive number of seconds.")
+
         if checkpoint_file:
             import os
             from datetime import datetime as _dt
             _cp_stem, _cp_ext = os.path.splitext(checkpoint_file)
-            _cp_ext = _cp_ext or ".txt"
+            _cp_ext = _cp_ext or ".csv"
             checkpoint_file = f"{_cp_stem}_{_dt.now().strftime('%Y%m%d_%H%M%S')}{_cp_ext}"
 
         if verbose:
@@ -833,252 +1139,79 @@ class Graffiti3:
                     )
                 _stage_t0 = time.perf_counter()
 
-                if cur_stage == Stage.CONSTANT:
-                    stage_conjs = constant_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
+                # ── Run the stage (with optional per-stage timeout) ──────
+                # SIGALRM is used instead of threads so the runner is
+                # genuinely interrupted (signal delivery stops C extensions
+                # at safe points) and no zombie threads accumulate.
+                if stage_timeout is not None:
+                    def _alarm_handler(signum, frame):  # noqa: E306
+                        raise _StageTimeout()
 
-                elif cur_stage == Stage.RATIO:
-                    stage_conjs = ratio_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.LP1:
-                    stage_conjs = lp_single_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        direction="both",
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.LP2:
-                    stage_conjs = lp_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_features=2,
-                        max_denom=20,
-                        coef_bound=10.0,
-                        direction="both",
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.LP3:
-                    stage_conjs = lp_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_features=3,
-                        max_denom=20,
-                        coef_bound=10.0,
-                        direction="both",
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.LP4:
-                    stage_conjs = lp_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_features=4,
-                        max_denom=30,
-                        coef_bound=10.0,
-                        direction="both",
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.POLY_SINGLE:
-                    stage_conjs = poly_single_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=20,
-                        max_coef_abs=4.0,
-                    )
-                    # poly_single_runner already filters internally; no touch filter here
-
-                elif cur_stage == Stage.MIXED:
-                    stage_conjs = mixed_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        primaries=self.invariants,
-                        secondaries=self.invariants,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        weight=0.5,
-                    )
-                    # mixed_runner does not guarantee min_touches; skip extra filter
-
-                elif cur_stage == Stage.SQRT:
-                    _sqrt_single = sqrt_single_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_denom=30,
-                        coef_bound=10.0,
-                    )
-                    _sqrt_quad = quad_sqrt_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_denom=30,
-                        coef_bound=10.0,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, _sqrt_single + _sqrt_quad, min_touches)
-
-                elif cur_stage == Stage.LOG:
-                    _log_single = log_single_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_denom=30,
-                        coef_bound=10.0,
-                        log_epsilon=1e-6,
-                        log_base=2,
-                    )
-                    _log_quad = quad_log_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        max_denom=30,
-                        coef_bound=10.0,
-                        log_epsilon=1e-6,
-                        log_base=2,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, _log_single + _log_quad, min_touches)
-
-                elif cur_stage == Stage.SQRT_LOG:
-                    stage_conjs = x_sqrt_log_single_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        max_coef_abs=4.0,
-                        max_intercept_abs=8.0,
-                        log_base=None,
-                        log_epsilon=1e-6,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.SQRT_PAIR:
-                    stage_conjs = sqrt_pair_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        max_coef_abs=4.0,
-                        max_intercept_abs=8.0,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.GEOM_MEAN:
-                    stage_conjs = geom_mean_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        max_coef_abs=4.0,
-                        max_intercept_abs=8.0,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.SQRT_SUM:
-                    stage_conjs = sqrt_sum_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        max_coef_abs=4.0,
-                        max_intercept_abs=8.0,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.LOG_SUM:
-                    stage_conjs = log_sum_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        max_coef_abs=4.0,
-                        max_intercept_abs=8.0,
-                        log_base=None,
-                        log_epsilon=1e-6,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
-                elif cur_stage == Stage.EXP_EXPONENT:
-                    stage_conjs = exp_exponent_runner(
-                        target_col=target,
-                        target_expr=target_expr,
-                        others=others,
-                        hypotheses=self.hypotheses,
-                        df=self.df,
-                        min_support=8,
-                        max_denom=30,
-                        coef_bound=4.0,
-                        zero_tol=1e-8,
-                        log_base=None,
-                        log_epsilon=1e-6,
-                    )
-                    stage_conjs = _filter_by_touch(self.df, stage_conjs, min_touches)
-
+                    _partial_conjs: List[Conjecture] = []
+                    _old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+                    signal.setitimer(signal.ITIMER_REAL, stage_timeout)
+                    try:
+                        _stage_result = self._run_stage_runner(
+                            cur_stage, target, target_expr, others, min_touches,
+                            _collector=_partial_conjs,
+                        )
+                    except _StageTimeout:
+                        # Process whatever the runner accumulated before the
+                        # interrupt, record it, then continue to the next stage.
+                        stage_elapsed = time.perf_counter() - _stage_t0
+                        _partial_filtered = _filter_by_touch(
+                            self.df, _partial_conjs, min_touches
+                        )
+                        _partial_filtered = heuristic_runner(
+                            _partial_filtered,
+                            df=self.df,
+                            morgan_filter=self.morgan_filter,
+                            dalmatian_filter=self.dalmatian_filter,
+                        )
+                        _partial_sophie = _maybe_sophie(cur_stage, _partial_filtered)
+                        for _c in _partial_filtered:
+                            _c._checkpoint_stage = cur_stage.value + " (partial)"
+                        all_conjectures.extend(_partial_filtered)
+                        all_conjectures = _dedup_conjectures(all_conjectures)
+                        stage_timings.append((cur_stage.value + " (partial)", stage_elapsed))
+                        if checkpoint_file:
+                            _write_conjecture_checkpoint(
+                                checkpoint_file,
+                                all_conjectures,
+                                target,
+                                cur_stage.value + " (partial)",
+                                stage_timings=stage_timings,
+                            )
+                        all_sophie.extend(_partial_sophie)
+                        stage_info[cur_stage.value + " (partial)"] = dict(
+                            conjectures=len(_partial_filtered),
+                            sophie=len(_partial_sophie),
+                            time_s=stage_elapsed,
+                        )
+                        if verbose:
+                            print(
+                                f"  [{sn}/{len(stages_to_run)}] Stage "
+                                f"'{cur_stage.value}' timed out after {stage_timeout}s "
+                                f"— {len(_partial_filtered)} partial conjecture(s) kept, "
+                                f"continuing to next stage.",
+                                flush=True,
+                            )
+                        continue  # advance to next stage in the for-loop
+                    finally:
+                        # Always cancel the timer and restore the old handler,
+                        # whether the stage completed, timed out, or raised
+                        # another exception (e.g. KeyboardInterrupt).
+                        signal.setitimer(signal.ITIMER_REAL, 0)
+                        signal.signal(signal.SIGALRM, _old_handler)
                 else:
+                    _stage_result = self._run_stage_runner(
+                        cur_stage, target, target_expr, others, min_touches,
+                    )
+
+                if _stage_result is None:
                     # Unknown stage — skip gracefully
                     continue
+                stage_conjs = _stage_result
 
                 stage_conjs = heuristic_runner(
                     stage_conjs,
@@ -1111,6 +1244,9 @@ class Graffiti3:
 
         except KeyboardInterrupt:
             _interrupted = True
+            _timed_out = False
+        else:
+            _timed_out = False
 
         # ── Final pass: annotate & sort ───────────────────────────────
         all_conjectures = _annotate_and_sort_conjectures(self.df, all_conjectures)
@@ -1189,6 +1325,7 @@ class Graffiti3:
         show: Optional[bool] = None,
         show_k_conjectures: Optional[int] = 20,
         checkpoint_file: Optional[str] = None,
+        stage_timeout: Optional[float] = None,
     ) -> Graffiti3Result:
         """
         Batch version of `conjecture` over multiple targets.
@@ -1221,6 +1358,7 @@ class Graffiti3:
                 quick=quick,
                 verbose=verbose,
                 checkpoint_file=checkpoint_file,
+                stage_timeout=stage_timeout,
             )
             all_conjs.extend(res.conjectures)
             all_sophie.extend(res.sophie_conditions)

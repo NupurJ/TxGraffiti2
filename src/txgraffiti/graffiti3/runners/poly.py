@@ -237,6 +237,7 @@ def poly_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Polynomial single-invariant bounds:
@@ -284,7 +285,7 @@ def poly_single_runner(
     list[Conjecture]
         List of lower and upper polynomial bounds.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
 
     if linprog is None:
         # No LP solver; gracefully return nothing.

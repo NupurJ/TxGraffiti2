@@ -175,6 +175,7 @@ def x_sqrt_log_single_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -184,7 +185,7 @@ def x_sqrt_log_single_runner(
 
     for each hypothesis H and each 'other' invariant x.
     """
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
@@ -266,6 +267,7 @@ def sqrt_pair_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -277,7 +279,7 @@ def sqrt_pair_runner(
     """
     from itertools import combinations
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
@@ -356,6 +358,7 @@ def geom_mean_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -367,7 +370,7 @@ def geom_mean_runner(
     """
     from itertools import combinations
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
@@ -447,6 +450,7 @@ def sqrt_sum_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -458,7 +462,7 @@ def sqrt_sum_runner(
     """
     from itertools import combinations
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
@@ -540,6 +544,7 @@ def log_sum_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -551,7 +556,7 @@ def log_sum_runner(
     """
     from itertools import combinations
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 

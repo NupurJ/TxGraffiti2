@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fractions import Fraction
-from typing import Dict, List, Sequence, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,7 @@ def mixed_runner(
     exclude_nonpositive_x: bool = True,
     exclude_nonpositive_y: bool = True,
     max_coef_abs: float = 4.0,
+    _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
     Mixed ratio-style bounds:
@@ -91,7 +92,7 @@ def mixed_runner(
         return acc
 
 
-    conjs: List[Conjecture] = []
+    conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     w = float(weight)
 
