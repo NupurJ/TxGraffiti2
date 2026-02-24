@@ -52,6 +52,8 @@ from txgraffiti.graffiti3.runners.exp_exponent import exp_exponent_runner
 from txgraffiti.graffiti3.relations import sophie_condition_to_lean_theorem
 # ───────────────────────── enums ───────────────────────── #
 
+EQUALITIES_FILE = "equalities.txt"
+
 class Stage(str, Enum):
     """Named stages in the Graffiti3 conjecturing pipeline."""
     CONSTANT = "constant"
@@ -171,6 +173,56 @@ def _append_checkpoint_summary(path: str, summary: str) -> None:
             fh.write(summary.strip() + "\n")
     except Exception:
         # Never crash the main pipeline over a checkpoint write
+        pass
+
+
+def _append_equalities_file(
+    path: str,
+    conjectures: "List[Any]",
+    target: str,
+) -> None:
+    """
+    Append conjectures where touch_count == support_n (i.e. the bound is tight
+    on every applicable object — effectively an equality) to *path*.
+    Multiple runs accumulate in the same file via append mode.
+
+    Format
+    ------
+    Each batch is preceded by a short header line and followed by a blank line
+    so entries from separate runs remain visually separated.
+    """
+    from datetime import datetime
+
+    equalities = [
+        c for c in conjectures
+        if (
+            int(getattr(c, "touch_count", getattr(c, "touch", 0)))
+            == int(getattr(c, "support_n", getattr(c, "support", -1)))
+            > 0
+        )
+    ]
+    if not equalities:
+        return
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(
+                f"# target='{target}'  written={ts}  "
+                f"equalities={len(equalities)}\n"
+            )
+            for c in equalities:
+                try:
+                    text = c.pretty()
+                except Exception:
+                    text = repr(c)
+                touches = int(getattr(c, "touch_count", getattr(c, "touch", 0)))
+                support = int(getattr(c, "support_n", getattr(c, "support", 0)))
+                stage  = getattr(c, "_checkpoint_stage", getattr(c, "stage", ""))
+                fh.write(f"{text}  [touches={touches}, support={support}, stage={stage}]\n")
+            fh.write("\n")
+    except Exception:
+        # Never crash the main pipeline over a side-output write
         pass
 
 
@@ -435,6 +487,7 @@ class Graffiti3:
         sophie_cfg: Optional[Dict[str, Any]] = None,
         min_touches: int = 3,
         lean_label: Optional[Dict[str, str]] = None,
+        equalities_file: Optional[str] = EQUALITIES_FILE,
     ) -> None:
         """
         Parameters
@@ -449,6 +502,9 @@ class Graffiti3:
             Optional overrides for Sophie mining config (eq_tol, min_target_support, etc.).
         min_touches : int, default=3
             Minimum #equalities required for a conjecture to enter heuristics/Sophie.
+        equalities_file : str or None, default='equalities.txt'
+            Path to the file where conjectures with touch_count == support_n are
+            appended as they are discovered.  Pass ``None`` to disable the feature.
         """
         self.df = df.copy()
 
@@ -469,6 +525,9 @@ class Graffiti3:
 
         # low-touch pruning threshold
         self.min_touches = int(min_touches)
+
+        # equalities output file (None disables writing)
+        self.equalities_file: Optional[str] = equalities_file
 
         # base universe
         self.base_property = self.gcr.base_hypothesis
@@ -1399,6 +1458,8 @@ class Graffiti3:
                                 cur_stage.value + " (partial)",
                                 stage_timings=stage_timings,
                             )
+                        if self.equalities_file:
+                            _append_equalities_file(self.equalities_file, _partial_filtered, target)
                         all_sophie.extend(_partial_sophie)
                         stage_info[cur_stage.value + " (partial)"] = dict(
                             conjectures=len(_partial_filtered),
@@ -1452,6 +1513,8 @@ class Graffiti3:
                         cur_stage.value,
                         stage_timings=stage_timings,
                     )
+                if self.equalities_file:
+                    _append_equalities_file(self.equalities_file, stage_conjs, target)
                 all_sophie.extend(stage_sophie)
                 stage_info[cur_stage.value] = dict(
                     conjectures=len(stage_conjs),
