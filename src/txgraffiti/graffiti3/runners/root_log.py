@@ -144,6 +144,7 @@ def sqrt_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -226,6 +227,7 @@ def sqrt_single_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if lo_res is not None:
                     beta_lo, c0_lo = lo_res
@@ -256,6 +258,7 @@ def sqrt_single_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if up_res is not None:
                     beta_up, c0_up = up_res
@@ -302,6 +305,7 @@ def log_single_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -395,6 +399,7 @@ def log_single_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if lo_res is not None:
                     beta_lo, c0_lo = lo_res
@@ -425,6 +430,7 @@ def log_single_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if up_res is not None:
                     beta_up, c0_up = up_res
@@ -481,6 +487,7 @@ def quad_sqrt_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -561,6 +568,7 @@ def quad_sqrt_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if lo_res is not None:
                     beta_lo, c0_lo = lo_res
@@ -591,6 +599,7 @@ def quad_sqrt_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if up_res is not None:
                     beta_up, c0_up = up_res
@@ -635,6 +644,7 @@ def quad_log_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -716,6 +726,7 @@ def quad_log_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if lo_res is not None:
                     beta_lo, c0_lo = lo_res
@@ -746,6 +757,7 @@ def quad_log_runner(
                     t_arr,
                     F,
                     coef_bound=coef_bound,
+                    solver_time_limit=solver_time_limit,
                 )
                 if up_res is not None:
                     beta_up, c0_up = up_res

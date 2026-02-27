@@ -115,6 +115,7 @@ def exp_exponent_runner(
     direction: str = "both",          # "upper", "lower", or "both"
     log_base: float | None = None,    # base for log(beta); None = natural log
     log_epsilon: float = 1e-9,        # clamp arg ≥ log_epsilon before log
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -256,6 +257,7 @@ def exp_exponent_runner(
                         t_arr=y,
                         F=F,
                         coef_bound=coef_bound,
+                        solver_time_limit=solver_time_limit,
                     )
                     if up_res is not None:
                         beta_up, c0_up = up_res
@@ -288,6 +290,7 @@ def exp_exponent_runner(
                         t_arr=y,
                         F=F,
                         coef_bound=coef_bound,
+                        solver_time_limit=solver_time_limit,
                     )
                     if lo_res is not None:
                         beta_lo, c0_lo = lo_res

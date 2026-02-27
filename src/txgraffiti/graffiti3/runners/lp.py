@@ -33,6 +33,7 @@ def lp_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -82,6 +83,8 @@ def lp_single_runner(
             n = len(x)
             sum_x = float(x_centered.sum())
 
+            _options = None if solver_time_limit is None else {"time_limit": solver_time_limit}
+
             # ------------------ upper bound: y <= a x + b ------------------
             if direction in ("both", "upper"):
                 # minimize sum_i (a x_i + b) = a * sum_x + b * n
@@ -96,6 +99,7 @@ def lp_single_runner(
                     A_ub=A_ub,
                     b_ub=b_ub,
                     method="highs",
+                    options=_options,
                 )
 
                 if res.success:
@@ -141,6 +145,7 @@ def lp_single_runner(
                     A_ub=A_ub,
                     b_ub=b_ub,
                     method="highs",
+                    options=_options,
                 )
 
                 if res.success:
@@ -176,6 +181,7 @@ def solve_lp_min_slack(
     *,
     sense: str,
     coef_bound: float = 10.0,
+    solver_time_limit: Optional[float] = None,
 ) -> Tuple[np.ndarray, float, np.ndarray]:
     """
     Solve the min-sum-slack LP for an affine bound:
@@ -273,12 +279,14 @@ def solve_lp_min_slack(
     for _ in range(n_s):
         bounds.append((0.0, None))            # s_i
 
+    _options = None if solver_time_limit is None else {"time_limit": solver_time_limit}
     res = linprog(
         c,
         A_eq=A_eq,
         b_eq=b_eq,
         bounds=bounds,
         method="highs",
+        options=_options,
     )
 
     if not res.success:
@@ -308,6 +316,7 @@ def lp_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 2.5,
     max_intercept_abs: float = 2.5,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -389,6 +398,7 @@ def lp_runner(
             ones_n = np.ones(n, dtype=float)
 
             lp_bounds = [(-coef_bound, coef_bound)] * (k_feat + 1)
+            _options = None if solver_time_limit is None else {"time_limit": solver_time_limit}
 
             # Upper bound: target <= w*x + b
             # Minimise sum(w*xi + b)  s.t.  w*xi + b >= yi  for all i
@@ -404,6 +414,7 @@ def lp_runner(
                     b_ub=b_ub_u,
                     bounds=lp_bounds,
                     method="highs",
+                    options=_options,
                 )
 
                 if res_u.success:
@@ -445,6 +456,7 @@ def lp_runner(
                     b_ub=b_ub_l,
                     bounds=lp_bounds,
                     method="highs",
+                    options=_options,
                 )
 
                 if res_l.success:

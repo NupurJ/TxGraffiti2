@@ -49,6 +49,7 @@ def _solve_lp_upper(
     F: np.ndarray,
     *,
     coef_bound: float,
+    solver_time_limit: Optional[float] = None,
 ) -> Optional[Tuple[np.ndarray, float]]:
     """
     Solve for an upper bound t <= F beta + c0 via LP:
@@ -80,12 +81,14 @@ def _solve_lp_upper(
 
     bounds = [(-coef_bound, coef_bound)] * (k + 1)
 
+    _options = None if solver_time_limit is None else {"time_limit": solver_time_limit}
     res = linprog(
         c=c_vec,
         A_ub=A_ub,
         b_ub=b_ub,
         bounds=bounds,
         method="highs",
+        options=_options,
     )
 
     if not res.success:
@@ -108,6 +111,7 @@ def _solve_lp_lower(
     F: np.ndarray,
     *,
     coef_bound: float,
+    solver_time_limit: Optional[float] = None,
 ) -> Optional[Tuple[np.ndarray, float]]:
     """
     Solve for a lower bound t >= F beta + c0 via LP:
@@ -144,12 +148,14 @@ def _solve_lp_lower(
 
     bounds = [(-coef_bound, coef_bound)] * (k + 1)
 
+    _options = None if solver_time_limit is None else {"time_limit": solver_time_limit}
     res = linprog(
         c=c_vec,
         A_ub=A_ub,
         b_ub=b_ub,
         bounds=bounds,
         method="highs",
+        options=_options,
     )
 
     if not res.success:
@@ -237,6 +243,7 @@ def poly_single_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -338,6 +345,7 @@ def poly_single_runner(
                 t_arr,
                 F,
                 coef_bound=coef_bound,
+                solver_time_limit=solver_time_limit,
             )
             if lo_res is not None:
                 beta_lo, c0_lo = lo_res
@@ -368,6 +376,7 @@ def poly_single_runner(
                 t_arr,
                 F,
                 coef_bound=coef_bound,
+                solver_time_limit=solver_time_limit,
             )
             if up_res is not None:
                 beta_up, c0_up = up_res

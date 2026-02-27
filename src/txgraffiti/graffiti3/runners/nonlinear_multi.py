@@ -83,6 +83,7 @@ def _fit_and_build_bounds(
     zero_tol: float,
     max_coef_abs: float,
     max_intercept_abs: float,
+    solver_time_limit: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Shared LP + canonicalization logic for nonlinear feature sets.
@@ -101,6 +102,7 @@ def _fit_and_build_bounds(
         t_arr,
         F,
         coef_bound=coef_bound,
+        solver_time_limit=solver_time_limit,
     )
     if lo_res is not None:
         beta_lo, c0_lo = lo_res
@@ -131,6 +133,7 @@ def _fit_and_build_bounds(
         t_arr,
         F,
         coef_bound=coef_bound,
+        solver_time_limit=solver_time_limit,
     )
     if up_res is not None:
         beta_up, c0_up = up_res
@@ -175,6 +178,7 @@ def x_sqrt_log_single_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -246,6 +250,7 @@ def x_sqrt_log_single_runner(
                     zero_tol=zero_tol,
                     max_coef_abs=max_coef_abs,
                     max_intercept_abs=max_intercept_abs,
+                    solver_time_limit=solver_time_limit,
                 )
             )
 
@@ -267,6 +272,7 @@ def sqrt_pair_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -337,6 +343,7 @@ def sqrt_pair_runner(
                     zero_tol=zero_tol,
                     max_coef_abs=max_coef_abs,
                     max_intercept_abs=max_intercept_abs,
+                    solver_time_limit=solver_time_limit,
                 )
             )
 
@@ -358,6 +365,7 @@ def geom_mean_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -429,6 +437,7 @@ def geom_mean_runner(
                     zero_tol=zero_tol,
                     max_coef_abs=max_coef_abs,
                     max_intercept_abs=max_intercept_abs,
+                    solver_time_limit=solver_time_limit,
                 )
             )
 
@@ -450,6 +459,7 @@ def sqrt_sum_runner(
     zero_tol: float = 1e-8,
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -521,6 +531,7 @@ def sqrt_sum_runner(
                     zero_tol=zero_tol,
                     max_coef_abs=max_coef_abs,
                     max_intercept_abs=max_intercept_abs,
+                    solver_time_limit=solver_time_limit,
                 )
             )
 
@@ -544,6 +555,7 @@ def log_sum_runner(
     max_intercept_abs: float = 8.0,
     log_base: float | None = None,
     log_epsilon: float = 0.0,
+    solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
 ) -> List[Conjecture]:
     """
@@ -617,6 +629,7 @@ def log_sum_runner(
                     zero_tol=zero_tol,
                     max_coef_abs=max_coef_abs,
                     max_intercept_abs=max_intercept_abs,
+                    solver_time_limit=solver_time_limit,
                 )
             )
 
