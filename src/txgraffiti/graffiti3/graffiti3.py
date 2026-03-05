@@ -23,6 +23,7 @@ from .relations import Conjecture, LeanEnv
 from .utils import (
     _filter_by_touch,
     _dedup_conjectures,
+    _filter_sqrt_of_square,
     _annotate_and_sort_conjectures,
 )
 from .types import HypothesisInfo, NonComparablePair, Graffiti3Result, SophieCondition
@@ -1466,6 +1467,7 @@ class Graffiti3:
                             _c._checkpoint_stage = cur_stage.value + " (partial)"
                         all_conjectures.extend(_partial_filtered)
                         all_conjectures = _dedup_conjectures(all_conjectures)
+                        all_conjectures = _filter_sqrt_of_square(all_conjectures)
                         stage_timings.append((cur_stage.value + " (partial)", stage_elapsed))
                         if checkpoint_file:
                             _write_conjecture_checkpoint(
@@ -1521,6 +1523,7 @@ class Graffiti3:
                     _c._checkpoint_stage = cur_stage.value
                 all_conjectures.extend(stage_conjs)
                 all_conjectures = _dedup_conjectures(all_conjectures)
+                all_conjectures = _filter_sqrt_of_square(all_conjectures)
                 stage_elapsed = time.perf_counter() - _stage_t0
                 stage_timings.append((cur_stage.value, stage_elapsed))
                 if checkpoint_file:

@@ -63,6 +63,72 @@ def _dedup_conjectures(conjs: Sequence[Conjecture]) -> List[Conjecture]:
     return out
 
 
+# ─────────────────── √(x·x) / √(x²) redundancy filter ─────────────────── #
+
+def _expr_has_sqrt_of_square(expr) -> bool:
+    """
+    Return True if *expr* contains a sub-expression of the form √(x·x) or
+    √(x²), which simplifies to |x| (= x for non-negative graph invariants).
+    """
+    from txgraffiti.graffiti3.exprs import (
+        BinOp, Const, Func2Op, LinearForm, LogOp, UnaryOp, safe_sqrt_series,
+    )
+
+    if isinstance(expr, UnaryOp):
+        # Is this a sqrt node?
+        is_sqrt = expr.fn is safe_sqrt_series or getattr(expr.fn, "__name__", "") == "sqrt"
+        if is_sqrt and isinstance(expr.arg, BinOp):
+            inner = expr.arg
+            # √(x · x)
+            if inner.fn is np.multiply and inner.left.pretty() == inner.right.pretty():
+                return True
+            # √(x ** 2)
+            if inner.fn is np.power and isinstance(inner.right, Const):
+                try:
+                    if abs(float(inner.right.value) - 2.0) < 1e-12:
+                        return True
+                except Exception:
+                    pass
+        return _expr_has_sqrt_of_square(expr.arg)
+
+    if isinstance(expr, BinOp):
+        return (_expr_has_sqrt_of_square(expr.left)
+                or _expr_has_sqrt_of_square(expr.right))
+
+    if isinstance(expr, LogOp):
+        return _expr_has_sqrt_of_square(expr.arg)
+
+    if isinstance(expr, Func2Op):
+        return (_expr_has_sqrt_of_square(expr.left)
+                or _expr_has_sqrt_of_square(expr.right))
+
+    # Const, ColumnTerm, LinearForm — leaf or no nested Expr children
+    return False
+
+
+def _relation_has_sqrt_of_square(rel) -> bool:
+    """Check whether any expression inside a Relation contains √(x·x)."""
+    from txgraffiti.graffiti3.relations import AllOf, Eq, Ge, Gt, Le, Lt
+
+    if isinstance(rel, (Le, Ge, Eq)):
+        return (_expr_has_sqrt_of_square(rel.left)
+                or _expr_has_sqrt_of_square(rel.right))
+    if isinstance(rel, (Lt, Gt)):
+        return (_expr_has_sqrt_of_square(rel.lhs)
+                or _expr_has_sqrt_of_square(rel.rhs))
+    if isinstance(rel, AllOf):
+        return any(_relation_has_sqrt_of_square(r) for r in rel.relations)
+    return False
+
+
+def _filter_sqrt_of_square(conjs: Sequence[Conjecture]) -> List[Conjecture]:
+    """
+    Drop conjectures that contain √(x·x) or √(x²) anywhere in their
+    relation, since these simplify trivially (√(x·x) = x for x ≥ 0).
+    """
+    return [c for c in conjs if not _relation_has_sqrt_of_square(c.relation)]
+
+
 def _nice_fraction(
     x: float,
     *,
