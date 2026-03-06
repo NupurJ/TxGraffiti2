@@ -124,26 +124,37 @@ Changes are listed oldest-first. Each section corresponds to one or more commits
 
 ---
 
-## 12. Inner-loop timeout checks for high-cardinality stages
+## 12. Inner-loop timeout checks for all LP-calling stages
 
-**Files:** `runners/nonlinear_multi.py`, `runners/exp_exponent.py`, `graffiti3/graffiti3.py`
+**Files:** `runners/lp.py`, `runners/poly.py`, `runners/root_log.py`, `runners/nonlinear_multi.py`, `runners/exp_exponent.py`, `runners/mixed.py`, `graffiti3/graffiti3.py`
 
 - **Problem:** Stages whose work is a combinatorial product (hypotheses × pairs of invariants, or hypotheses × invariants × invariants) ran far beyond `stage_timeout`. Even though each individual `linprog` call respected `solver_time_limit`, thousands of such calls accumulated to 5–10× the intended timeout (e.g. 1000+ seconds when `stage_timeout=120`).
 
-- **Affected runners:**
+- **Affected runners (all runners with nested loops that make LP or ratio calls):**
 
-  | Runner | Loop structure |
-  |--------|----------------|
-  | `geom_mean_runner` | hypotheses × combinations(invariants, 2) |
-  | `log_sum_runner` | hypotheses × combinations(invariants, 2) |
-  | `sqrt_pair_runner` | hypotheses × combinations(invariants, 2) |
-  | `sqrt_sum_runner` | hypotheses × combinations(invariants, 2) |
-  | `exp_exponent_runner` | hypotheses × invariants × invariants |
+  | Runner | File | Loop structure |
+  |--------|------|----------------|
+  | `lp_single_runner` | `runners/lp.py` | hypotheses × invariants |
+  | `lp_runner` | `runners/lp.py` | hypotheses × combinations(invariants, k) |
+  | `poly_single_runner` | `runners/poly.py` | hypotheses × invariants |
+  | `sqrt_single_runner` | `runners/root_log.py` | hypotheses × invariants × invariants |
+  | `log_single_runner` | `runners/root_log.py` | hypotheses × invariants × invariants |
+  | `quad_sqrt_runner` | `runners/root_log.py` | hypotheses × invariants × invariants |
+  | `quad_log_runner` | `runners/root_log.py` | hypotheses × invariants × invariants |
+  | `x_sqrt_log_single_runner` | `runners/nonlinear_multi.py` | hypotheses × invariants |
+  | `sqrt_pair_runner` | `runners/nonlinear_multi.py` | hypotheses × combinations(invariants, 2) |
+  | `geom_mean_runner` | `runners/nonlinear_multi.py` | hypotheses × combinations(invariants, 2) |
+  | `sqrt_sum_runner` | `runners/nonlinear_multi.py` | hypotheses × combinations(invariants, 2) |
+  | `log_sum_runner` | `runners/nonlinear_multi.py` | hypotheses × combinations(invariants, 2) |
+  | `exp_exponent_runner` | `runners/exp_exponent.py` | hypotheses × invariants × invariants |
+  | `mixed_runner` | `runners/mixed.py` | hypotheses × primaries × secondaries |
 
-- **Fix:** Added `_stage_timeout: Optional[float] = None` to each of these runners. When set, `time.perf_counter()` is checked at the top of each hypothesis loop and again at the top of each inner invariant-pair / invariant-product loop. When elapsed time exceeds `_stage_timeout`, `_StageTimeout` is raised immediately, handing control back to the existing partial-result recovery path.
+- **Fix:** Added `_stage_timeout: Optional[float] = None` to each runner. When set, `time.perf_counter()` is checked at the top of each hypothesis loop and again at the top of each inner loop. When elapsed time exceeds `_stage_timeout`, `_StageTimeout` is raised immediately, handing control back to the existing partial-result recovery path.
 
-- `_run_stage_runner` in `graffiti3.py` passes `_stage_timeout=stage_timeout` alongside the existing `solver_time_limit=stage_timeout` for all five runners.
+- `_run_stage_runner` in `graffiti3.py` passes `_stage_timeout=stage_timeout` alongside the existing `solver_time_limit=stage_timeout` for all affected runners.
 
-- The two parameters serve different roles and are both needed:
+- **Not affected:** `constant_runner` and `ratio_runner` do not make LP calls, so they execute pure-Python code that `SIGALRM` can interrupt between bytecodes without delay. No `_stage_timeout` is needed for these.
+
+- The two timeout parameters serve different roles and are both needed:
   - `solver_time_limit` caps each individual `linprog` call (prevents SIGALRM from being stuck inside a C extension).
   - `_stage_timeout` caps the cumulative wall-clock time across all LP calls in the stage (prevents thousands of short LP calls from adding up to far beyond the timeout).
