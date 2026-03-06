@@ -1478,12 +1478,12 @@ class Graffiti3:
                             morgan_filter=self.morgan_filter,
                             dalmatian_filter=self.dalmatian_filter,
                         )
+                        _partial_filtered = _filter_sqrt_of_square(_partial_filtered)
                         _partial_sophie = _maybe_sophie(cur_stage, _partial_filtered)
                         for _c in _partial_filtered:
                             _c._checkpoint_stage = cur_stage.value + " (partial)"
                         all_conjectures.extend(_partial_filtered)
                         all_conjectures = _dedup_conjectures(all_conjectures)
-                        all_conjectures = _filter_sqrt_of_square(all_conjectures)
                         stage_timings.append((cur_stage.value + " (partial)", stage_elapsed))
                         if checkpoint_file:
                             _write_conjecture_checkpoint(
@@ -1533,13 +1533,13 @@ class Graffiti3:
                     morgan_filter=self.morgan_filter,
                     dalmatian_filter=self.dalmatian_filter,
                 )
+                stage_conjs = _filter_sqrt_of_square(stage_conjs)
                 stage_sophie = _maybe_sophie(cur_stage, stage_conjs)
 
                 for _c in stage_conjs:
                     _c._checkpoint_stage = cur_stage.value
                 all_conjectures.extend(stage_conjs)
                 all_conjectures = _dedup_conjectures(all_conjectures)
-                all_conjectures = _filter_sqrt_of_square(all_conjectures)
                 stage_elapsed = time.perf_counter() - _stage_t0
                 stage_timings.append((cur_stage.value, stage_elapsed))
                 if checkpoint_file:
