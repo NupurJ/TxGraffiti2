@@ -42,6 +42,7 @@ def mixed_runner(
     exclude_nonpositive_y: bool = True,
     max_coef_abs: float = 4.0,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Mixed ratio-style bounds:
@@ -96,7 +97,14 @@ def mixed_runner(
     t_all = df[target_col].to_numpy(dtype=float)
     w = float(weight)
 
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
+
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -106,6 +114,9 @@ def mixed_runner(
         for xname, x_expr in primaries.items():
             if xname == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             # Evaluate x
             try:

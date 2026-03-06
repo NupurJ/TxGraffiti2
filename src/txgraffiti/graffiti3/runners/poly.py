@@ -244,8 +244,7 @@ def poly_single_runner(
     max_coef_abs: float = 4.0,
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
-    _collector: Optional[List[Conjecture]] = None,
-) -> List[Conjecture]:
+    _collector: Optional[List[Conjecture]] = None,    _stage_timeout: Optional[float] = None,) -> List[Conjecture]:
     """
     Polynomial single-invariant bounds:
 
@@ -292,6 +291,10 @@ def poly_single_runner(
     list[Conjecture]
         List of lower and upper polynomial bounds.
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     if linprog is None:
@@ -301,6 +304,9 @@ def poly_single_runner(
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -310,6 +316,9 @@ def poly_single_runner(
         for name, x_expr in others.items():
             if name == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             try:
                 x_all = x_expr.eval(df).to_numpy(dtype=float)

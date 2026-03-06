@@ -121,3 +121,29 @@ Changes are listed oldest-first. Each section corresponds to one or more commits
 - Added guidance on running multiple graffiti3 jobs in parallel on an HPC cluster.
 - Explains why `multiprocessing.Process` per stage is wrong for HPC (BLAS fork-safety deadlocks, SLURM process count limits) and what to do instead (`ProcessPoolExecutor` / SLURM array jobs).
 - See [HPC_INSTRUCTIONS.md](HPC_INSTRUCTIONS.md) for details.
+
+---
+
+## 12. Inner-loop timeout checks for high-cardinality stages
+
+**Files:** `runners/nonlinear_multi.py`, `runners/exp_exponent.py`, `graffiti3/graffiti3.py`
+
+- **Problem:** Stages whose work is a combinatorial product (hypotheses × pairs of invariants, or hypotheses × invariants × invariants) ran far beyond `stage_timeout`. Even though each individual `linprog` call respected `solver_time_limit`, thousands of such calls accumulated to 5–10× the intended timeout (e.g. 1000+ seconds when `stage_timeout=120`).
+
+- **Affected runners:**
+
+  | Runner | Loop structure |
+  |--------|----------------|
+  | `geom_mean_runner` | hypotheses × combinations(invariants, 2) |
+  | `log_sum_runner` | hypotheses × combinations(invariants, 2) |
+  | `sqrt_pair_runner` | hypotheses × combinations(invariants, 2) |
+  | `sqrt_sum_runner` | hypotheses × combinations(invariants, 2) |
+  | `exp_exponent_runner` | hypotheses × invariants × invariants |
+
+- **Fix:** Added `_stage_timeout: Optional[float] = None` to each of these runners. When set, `time.perf_counter()` is checked at the top of each hypothesis loop and again at the top of each inner invariant-pair / invariant-product loop. When elapsed time exceeds `_stage_timeout`, `_StageTimeout` is raised immediately, handing control back to the existing partial-result recovery path.
+
+- `_run_stage_runner` in `graffiti3.py` passes `_stage_timeout=stage_timeout` alongside the existing `solver_time_limit=stage_timeout` for all five runners.
+
+- The two parameters serve different roles and are both needed:
+  - `solver_time_limit` caps each individual `linprog` call (prevents SIGALRM from being stuck inside a C extension).
+  - `_stage_timeout` caps the cumulative wall-clock time across all LP calls in the stage (prevents thousands of short LP calls from adding up to far beyond the timeout).

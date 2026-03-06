@@ -146,6 +146,7 @@ def sqrt_single_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Square-root two-invariant bounds:
@@ -160,12 +161,19 @@ def sqrt_single_runner(
     that previously gave conjectures like
         p6 ≥ (35/9)·temperature(p6) + (13/15)·√temperature(p6).
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
 
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -176,6 +184,9 @@ def sqrt_single_runner(
         for name_x, x_expr in others.items():
             if name_x == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             try:
                 x_all = x_expr.eval(df).to_numpy(dtype=float)
@@ -307,6 +318,7 @@ def log_single_runner(
     log_epsilon: float = 0.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Logarithmic two-invariant bounds:
@@ -324,6 +336,10 @@ def log_single_runner(
         Clamp argument to at least `log_epsilon` before applying log, so
         you can avoid -inf from small/zero values if you wish.
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     if _solve_lp_lower is None or _solve_lp_upper is None:
@@ -332,6 +348,9 @@ def log_single_runner(
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -342,6 +361,9 @@ def log_single_runner(
         for name_x, x_expr in others.items():
             if name_x == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             # Evaluate x once per (hyp, x)
             try:
@@ -489,6 +511,7 @@ def quad_sqrt_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Quadratic + sqrt two-invariant bounds:
@@ -504,11 +527,18 @@ def quad_sqrt_runner(
 
     which can capture mixed “curvature + spread” behavior.
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -519,6 +549,9 @@ def quad_sqrt_runner(
         for name_x, x_expr in others.items():
             if name_x == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             try:
                 x_all = x_expr.eval(df).to_numpy(dtype=float)
@@ -646,6 +679,7 @@ def quad_log_runner(
     log_epsilon: float = 0.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Quadratic + log two-invariant bounds:
@@ -658,11 +692,18 @@ def quad_log_runner(
     Special case x = y yields bounds of the form
         t ≥ a x² + b log(x) + c.
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -673,6 +714,9 @@ def quad_log_runner(
         for name_x, x_expr in others.items():
             if name_x == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             try:
                 x_all = x_expr.eval(df).to_numpy(dtype=float)

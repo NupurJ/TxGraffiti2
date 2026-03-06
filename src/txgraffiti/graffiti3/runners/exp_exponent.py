@@ -187,6 +187,10 @@ def exp_exponent_runner(
     list[Conjecture]
         Exponent-type conjectures for all hypotheses and (base, chi) pairs.
     """
+    import time
+    from ..graffiti3 import _StageTimeout
+
+    _stage_start_time = time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     # If SciPy / LP is unavailable, the imported helpers will simply return None.
@@ -198,6 +202,10 @@ def exp_exponent_runner(
     y_all = log_t_expr.eval(df).to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        # Check for stage timeout
+        if _stage_start_time is not None and _stage_timeout is not None:
+            if time.perf_counter() - _stage_start_time > _stage_timeout:
+                raise _StageTimeout()
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -209,6 +217,10 @@ def exp_exponent_runner(
 
         # Choose (base, chi) pairs from others.
         for base_name, base_expr in others.items():
+            # Check for stage timeout within loop
+            if _stage_start_time is not None and _stage_timeout is not None:
+                if time.perf_counter() - _stage_start_time > _stage_timeout:
+                    raise _StageTimeout()
             # Base going inside a power: we want it > 0 on the relevant rows.
             # `log_expr` will clamp via epsilon and yield NaN for truly bad values.
             log_base_expr = log_expr(base_expr, base=log_base, epsilon=log_epsilon)
@@ -219,6 +231,11 @@ def exp_exponent_runner(
                 continue
 
             for chi_name, chi_expr in others.items():
+                # Check for stage timeout within inner loop
+                if _stage_start_time is not None and _stage_timeout is not None:
+                    if time.perf_counter() - _stage_start_time > _stage_timeout:
+                        raise _StageTimeout()
+
                 # You may optionally skip the trivial chi == base case; for now we allow it.
                 # if chi_name == base_name:
                 #     continue

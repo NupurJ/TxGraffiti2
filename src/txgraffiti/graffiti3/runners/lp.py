@@ -35,6 +35,7 @@ def lp_single_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     LP stage: for each hypothesis h and each single 'other' invariant x, solve
@@ -51,14 +52,23 @@ def lp_single_runner(
 
     which the pure ratio stage (no intercept) cannot see.
     """
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     y_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         H = np.asarray(hyp.mask, dtype=bool)
 
         for other_name, other_expr in others.items():
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
             # Evaluate x on the whole df
             try:
                 x_all = other_expr.eval(df).to_numpy(dtype=float)
@@ -318,6 +328,7 @@ def lp_runner(
     max_intercept_abs: float = 2.5,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Linear-programming-based affine bounds:
@@ -333,6 +344,10 @@ def lp_runner(
     affine form that fails this test or collapses to 0·x.
     """
     # solve_lp_func is accepted for API compatibility but ignored.
+    import time as _time
+    from txgraffiti.graffiti3.graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
 
     target_vals = df[target_col].to_numpy(dtype=float)
     feature_items = list(others.items())
@@ -347,6 +362,9 @@ def lp_runner(
     conjs: List[Conjecture] = _collector if _collector is not None else []
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         H = np.asarray(hyp.mask, dtype=bool)
         idx = np.where(H)[0]
         if idx.size == 0:
@@ -357,6 +375,9 @@ def lp_runner(
             continue
 
         for subset in all_subsets:
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
+
             feat_names = [name for name, _ in subset]
             feat_exprs = [expr for _, expr in subset]
             feat_str = ', '.join(feat_names)

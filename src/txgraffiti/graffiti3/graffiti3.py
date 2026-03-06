@@ -1005,6 +1005,7 @@ class Graffiti3:
                 direction="both",
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1021,6 +1022,7 @@ class Graffiti3:
                 direction="both",
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1037,6 +1039,7 @@ class Graffiti3:
                 direction="both",
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1053,6 +1056,7 @@ class Graffiti3:
                 direction="both",
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1069,6 +1073,7 @@ class Graffiti3:
                 max_coef_abs=4.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
 
         elif cur_stage == Stage.MIXED:
@@ -1082,6 +1087,7 @@ class Graffiti3:
                 df=self.df,
                 weight=0.5,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
 
         elif cur_stage == Stage.SQRT:
@@ -1095,6 +1101,7 @@ class Graffiti3:
                 coef_bound=10.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             quad_sqrt_runner(
                 target_col=target,
@@ -1106,6 +1113,7 @@ class Graffiti3:
                 coef_bound=10.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1122,6 +1130,7 @@ class Graffiti3:
                 log_base=2,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             quad_log_runner(
                 target_col=target,
@@ -1135,6 +1144,7 @@ class Graffiti3:
                 log_base=2,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1155,6 +1165,7 @@ class Graffiti3:
                 log_epsilon=1e-6,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1173,6 +1184,7 @@ class Graffiti3:
                 max_intercept_abs=8.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1191,6 +1203,7 @@ class Graffiti3:
                 max_intercept_abs=8.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1209,6 +1222,7 @@ class Graffiti3:
                 max_intercept_abs=8.0,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1229,6 +1243,7 @@ class Graffiti3:
                 log_epsilon=1e-6,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 
@@ -1247,6 +1262,7 @@ class Graffiti3:
                 log_epsilon=1e-6,
                 solver_time_limit=stage_timeout,
                 _collector=_acc,
+                _stage_timeout=stage_timeout,
             )
             return _filter_by_touch(self.df, _acc, min_touches)
 

@@ -180,6 +180,7 @@ def x_sqrt_log_single_runner(
     log_epsilon: float = 0.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -189,10 +190,17 @@ def x_sqrt_log_single_runner(
 
     for each hypothesis H and each 'other' invariant x.
     """
+    import time as _time
+    from ..graffiti3 import _StageTimeout
+
+    _stage_start = _time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
 
     for hyp in hypotheses:
+        if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+            raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -202,6 +210,9 @@ def x_sqrt_log_single_runner(
         for name, x_expr in others.items():
             if name == target_col:
                 continue
+
+            if _stage_start is not None and _time.perf_counter() - _stage_start > _stage_timeout:
+                raise _StageTimeout()
 
             try:
                 x_all = x_expr.eval(df).to_numpy(dtype=float)
@@ -274,6 +285,7 @@ def sqrt_pair_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -284,12 +296,20 @@ def sqrt_pair_runner(
     for each hypothesis H and each unordered pair (x, y) of invariants.
     """
     from itertools import combinations
+    import time
+    from ..graffiti3 import _StageTimeout
 
+    _stage_start_time = time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
     for hyp in hypotheses:
+        # Check for stage timeout
+        if _stage_start_time is not None and _stage_timeout is not None:
+            if time.perf_counter() - _stage_start_time > _stage_timeout:
+                raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -297,6 +317,11 @@ def sqrt_pair_runner(
         t_arr_full = t_all[mask]
 
         for (name_x, x_expr), (name_y, y_expr) in combinations(items, 2):
+            # Check for stage timeout within inner loop
+            if _stage_start_time is not None and _stage_timeout is not None:
+                if time.perf_counter() - _stage_start_time > _stage_timeout:
+                    raise _StageTimeout()
+
             # Avoid target in any role
             if name_x == target_col or name_y == target_col:
                 continue
@@ -367,6 +392,7 @@ def geom_mean_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -377,7 +403,10 @@ def geom_mean_runner(
     for each hypothesis H and each unordered pair (x, y) of invariants.
     """
     from itertools import combinations
+    import time
+    from ..graffiti3 import _StageTimeout
 
+    _stage_start_time = time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
@@ -461,6 +490,7 @@ def sqrt_sum_runner(
     max_intercept_abs: float = 8.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -471,12 +501,20 @@ def sqrt_sum_runner(
     for each hypothesis H and each unordered pair (x, y) of invariants.
     """
     from itertools import combinations
+    import time
+    from ..graffiti3 import _StageTimeout
 
+    _stage_start_time = time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
     for hyp in hypotheses:
+        # Check for stage timeout
+        if _stage_start_time is not None and _stage_timeout is not None:
+            if time.perf_counter() - _stage_start_time > _stage_timeout:
+                raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -484,6 +522,11 @@ def sqrt_sum_runner(
         t_arr_full = t_all[mask]
 
         for (name_x, x_expr), (name_y, y_expr) in combinations(items, 2):
+            # Check for stage timeout within inner loop
+            if _stage_start_time is not None and _stage_timeout is not None:
+                if time.perf_counter() - _stage_start_time > _stage_timeout:
+                    raise _StageTimeout()
+
             if name_x == target_col or name_y == target_col:
                 continue
 
@@ -557,6 +600,7 @@ def log_sum_runner(
     log_epsilon: float = 0.0,
     solver_time_limit: Optional[float] = None,
     _collector: Optional[List[Conjecture]] = None,
+    _stage_timeout: Optional[float] = None,
 ) -> List[Conjecture]:
     """
     Bounds of the form
@@ -567,12 +611,20 @@ def log_sum_runner(
     for each hypothesis H and each unordered pair (x, y) of invariants.
     """
     from itertools import combinations
+    import time
+    from ..graffiti3 import _StageTimeout
 
+    _stage_start_time = time.perf_counter() if _stage_timeout is not None else None
     conjs: List[Conjecture] = _collector if _collector is not None else []
     t_all = df[target_col].to_numpy(dtype=float)
     items = list(others.items())
 
     for hyp in hypotheses:
+        # Check for stage timeout
+        if _stage_start_time is not None and _stage_timeout is not None:
+            if time.perf_counter() - _stage_start_time > _stage_timeout:
+                raise _StageTimeout()
+
         mask = np.asarray(hyp.mask, dtype=bool)
         if not mask.any():
             continue
@@ -580,6 +632,10 @@ def log_sum_runner(
         t_arr_full = t_all[mask]
 
         for (name_x, x_expr), (name_y, y_expr) in combinations(items, 2):
+            # Check for stage timeout within inner loop
+            if _stage_start_time is not None and _stage_timeout is not None:
+                if time.perf_counter() - _stage_start_time > _stage_timeout:
+                    raise _StageTimeout()
             if name_x == target_col or name_y == target_col:
                 continue
 
